@@ -1,0 +1,4 @@
+[submodule "chocolate-doom"]
+	path = chocolate-doom
+	url = https://github.com/voutilad/chocolate-doom
+	branch = personal
