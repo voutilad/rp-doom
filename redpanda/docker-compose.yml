@@ -46,6 +46,7 @@ services:
         target: /var/lib/redpanda/data
       - "./broker.crt:/tls/broker.crt:ro"
       - "./ca.crt:/tls/ca.crt:ro"
+      - "./config/redpanda-0.yaml:/etc/redpanda/redpanda.yaml"
     networks:
       - redpanda_network
     ports:
@@ -60,13 +61,6 @@ services:
     command:
       - redpanda
       - start
-      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:29092
-      - --advertise-kafka-addr internal://redpanda-1:9092,external://localhost:29092
-      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:28082
-      - --advertise-pandaproxy-addr internal://redpanda-1:8082,external://localhost:28082
-      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:28081
-      - --rpc-addr redpanda-1:33145
-      - --advertise-rpc-addr redpanda-1:33145
       - --smp 1
       - --memory 1G
       - --mode dev-container
@@ -79,6 +73,7 @@ services:
         target: /var/lib/redpanda/data
       - "./broker.crt:/tls/broker.crt:ro"
       - "./ca.crt:/tls/ca.crt:ro"
+      - "./config/redpanda-1.yaml:/etc/redpanda/redpanda.yaml"
     networks:
       - redpanda_network
     ports:
@@ -114,6 +109,7 @@ services:
         target: /var/lib/redpanda/data
       - "./broker.crt:/tls/broker.crt:ro"
       - "./ca.crt:/tls/ca.crt:ro"
+      - "./config/redpanda-2.yaml:/etc/redpanda/redpanda.yaml"
     networks:
       - redpanda_network
     ports:
