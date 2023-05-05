@@ -15,38 +15,29 @@ secrets:
 
 services:
   redpanda-0:
+    entrypoint: /pre-entry.sh
     command:
       - redpanda
       - start
       - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
-      # Address the broker advertises to clients that connect to the Kafka API.
-      # Use the internal addresses to connect to the Redpanda brokers'
-      # from inside the same Docker network.
-      # Use the external addresses to connect to the Redpanda brokers'
-      # from outside the Docker network.
       - --advertise-kafka-addr internal://redpanda-0:9092,external://localhost:19092
       - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
-      # Address the broker advertises to clients that connect to the HTTP Proxy.
       - --advertise-pandaproxy-addr internal://redpanda-0:8082,external://localhost:18082
       - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
-      # Redpanda brokers use the RPC API to communicate with eachother internally.
       - --rpc-addr redpanda-0:33145
       - --advertise-rpc-addr redpanda-0:33145
-      # Tells Seastar (the framework Redpanda uses under the hood) to use 1 core on the system.
       - --smp 1
-      # The amount of memory to make available to Redpanda.
       - --memory 1G
-      # Mode dev-container uses well-known configuration properties for development in containers.
-      - --mode dev-container
       - --default-log-level=info
     image: docker.redpanda.com/redpandadata/redpanda:v23.1.8
     container_name: redpanda-0
     volumes:
       - type: tmpfs
         target: /var/lib/redpanda/data
+      - "./pre-entry.sh:/pre-entry.sh:ro"
       - "./broker.crt:/tls/broker.crt:ro"
       - "./ca.crt:/tls/ca.crt:ro"
-      - "./config/redpanda-0.yaml:/etc/redpanda/redpanda.yaml"
+      - "./redpanda.yaml:/tmp/redpanda.yaml:ro"
     networks:
       - redpanda_network
     ports:
@@ -58,9 +49,17 @@ services:
       - broker_key
 
   redpanda-1:
+    entrypoint: /pre-entry.sh
     command:
       - redpanda
       - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:29092
+      - --advertise-kafka-addr internal://redpanda-0:9092,external://localhost:29092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:28082
+      - --advertise-pandaproxy-addr internal://redpanda-0:8082,external://localhost:28082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:28081
+      - --rpc-addr redpanda-1:33145
+      - --advertise-rpc-addr redpanda-1:33145
       - --smp 1
       - --memory 1G
       - --mode dev-container
@@ -71,9 +70,10 @@ services:
     volumes:
       - type: tmpfs
         target: /var/lib/redpanda/data
+      - "./pre-entry.sh:/pre-entry.sh:ro"
       - "./broker.crt:/tls/broker.crt:ro"
       - "./ca.crt:/tls/ca.crt:ro"
-      - "./config/redpanda-1.yaml:/etc/redpanda/redpanda.yaml"
+      - "./redpanda.yaml:/tmp/redpanda.yaml:ro"
     networks:
       - redpanda_network
     ports:
@@ -87,6 +87,7 @@ services:
       - broker_key
 
   redpanda-2:
+    entrypoint: /pre-entry.sh
     command:
       - redpanda
       - start
@@ -107,9 +108,10 @@ services:
     volumes:
       - type: tmpfs
         target: /var/lib/redpanda/data
+      - "./pre-entry.sh:/pre-entry.sh:ro"
       - "./broker.crt:/tls/broker.crt:ro"
       - "./ca.crt:/tls/ca.crt:ro"
-      - "./config/redpanda-2.yaml:/etc/redpanda/redpanda.yaml"
+      - "./redpanda.yaml:/tmp/redpanda.yaml:ro"
     networks:
       - redpanda_network
     ports:
