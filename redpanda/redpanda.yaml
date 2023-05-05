@@ -2,6 +2,13 @@ redpanda:
     admin:
       address: 0.0.0.0
       port: 9644
+    kafka_api_tls:
+      - name: external
+        key_file: /run/secrets/broker_key
+        cert_file: /tls/broker.crt
+        truststore_file: /tls/ca.crt
+        enabled: true
+        require_client_auth: false
     data_directory: /var/lib/redpanda/data
     seed_servers: []
     developer_mode: true
