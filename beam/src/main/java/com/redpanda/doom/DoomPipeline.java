@@ -49,9 +49,10 @@ public class DoomPipeline {
     consumerConfig.put("sasl.jaas.config", jassConfig);
 
     p.apply(
-            KafkaIO.<Long, String>read()
+            KafkaIO.<String, String>read()
                 .withBootstrapServers(System.getProperty("com.redpanda.doom.BootstrapServers", "localhost"))
                 .withTopic("doom")
+                .withKeyDeserializer(StringDeserializer.class)
                 .withValueDeserializer(StringDeserializer.class)
                 .withConsumerConfigUpdates(consumerConfig)
                 .withoutMetadata())
