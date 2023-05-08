@@ -30,8 +30,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class DoomPipeline {
-  static final String TOKENIZER_PATTERN = "[^\\p{L}]+"; // Java pattern for letters
-
   public static void main(String[] args) {
     final PipelineOptions options = PipelineOptionsFactory.create();
     final Pipeline p = Pipeline.create(options);
@@ -45,7 +43,7 @@ public class DoomPipeline {
     consumerConfig.put("group.id", "doom-consumer");
     consumerConfig.put("group.instance.id", "doom-consumer-beam");
     consumerConfig.put("security.protocol", "SASL_SSL");
-    consumerConfig.put("sasl.mechanism", "SCAM-SHA-256");
+    consumerConfig.put("sasl.mechanism", "SCRAM-SHA-256");
     consumerConfig.put("sasl.jaas.config", jassConfig);
 
     p.apply(
