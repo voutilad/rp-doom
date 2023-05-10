@@ -7,7 +7,13 @@ public class JsonDeserializationTest {
 
   @Test
   public void testWeCanDeserializeAnEvent() {
-    final String json = "{ \"session\": \"abc123\", \"counter\": 123, \"frame\": { \"tic\": 123, \"millis\": 456 } }";
+    final String json = "{ " +
+        "\"session\": \"abc123\", " +
+        "\"counter\": 123, " +
+        "\"type\": \"move\", " +
+        "\"frame\": { \"tic\": 123, \"millis\": 456 }, " +
+        "\"actor\": { \"type\": \"player\", \"health\": 25, \"armor\": 40, \"id\": 4444 } " +
+    "}";
     final Event event = Event.fromJson(json);
 
     Assert.assertNotNull(event);

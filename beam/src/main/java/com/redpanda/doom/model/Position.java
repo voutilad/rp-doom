@@ -1,8 +1,9 @@
 package com.redpanda.doom.model;
 
+import java.io.Serializable;
 import java.util.Objects;
 
-public class Position {
+public class Position implements Serializable {
 
   /* Non-null placeholder for empty or unset position value. */
   public static final Position EMPTY_POSITION = new Position();
@@ -47,6 +48,9 @@ public class Position {
 
   @Override
   public String toString() {
+    if (this.equals(EMPTY_POSITION))
+      return "Position{EMPTY}";
+
     return "Position{" +
         "x=" + x +
         ", y=" + y +

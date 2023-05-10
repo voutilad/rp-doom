@@ -1,8 +1,9 @@
 package com.redpanda.doom.model;
 
+import java.io.Serializable;
 import java.util.Objects;
 
-public class Frame {
+public class Frame implements Serializable {
 
   /* Non-null placeholder for an empty frame. */
   public static final Frame EMPTY_FRAME = new Frame();
@@ -27,7 +28,7 @@ public class Frame {
 
   @Override
   public String toString() {
-    if (this == EMPTY_FRAME)
+    if (this.equals(EMPTY_FRAME))
       return "Frame{EMPTY}";
 
     return "Frame{" +

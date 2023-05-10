@@ -1,8 +1,9 @@
 package com.redpanda.doom.model;
 
+import java.io.Serializable;
 import java.util.Objects;
 
-public class Actor {
+public class Actor implements Serializable {
 
   public static final Actor EMPTY_ACTOR = new Actor();
 
@@ -49,7 +50,7 @@ public class Actor {
 
   @Override
   public String toString() {
-    if (this == EMPTY_ACTOR)
+    if (this.equals(EMPTY_ACTOR))
       return "Actor{EMPTY}";
 
     return "Actor{" +

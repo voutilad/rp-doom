@@ -2,12 +2,13 @@ package com.redpanda.doom.model;
 
 import org.apache.beam.vendor.grpc.v1p48p1.com.google.gson.Gson;
 
+import java.io.Serializable;
 import java.util.Objects;
 
 /**
  * A base event emitted by Doom during gameplay.
  */
-public class Event {
+public class Event implements Serializable {
   public static final Event EMPTY_EVENT = new Event();
 
   private static final Gson GSON = new Gson();
@@ -70,7 +71,7 @@ public class Event {
 
   @Override
   public String toString() {
-    if (this == EMPTY_EVENT)
+    if (this.equals(EMPTY_EVENT))
       return "Event{EMPTY}";
 
     return "Event{" +

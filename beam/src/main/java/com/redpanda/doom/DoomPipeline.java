@@ -19,18 +19,27 @@ package com.redpanda.doom;
 
 import com.redpanda.doom.model.Event;
 import org.apache.beam.sdk.Pipeline;
+import org.apache.beam.sdk.coders.Coder;
+import org.apache.beam.sdk.coders.CoderException;
+import org.apache.beam.sdk.coders.CoderRegistry;
 import org.apache.beam.sdk.io.kafka.KafkaIO;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
-import org.apache.beam.sdk.transforms.MapElements;
-import org.apache.beam.sdk.transforms.SimpleFunction;
-import org.apache.beam.sdk.transforms.Values;
+import org.apache.beam.sdk.transforms.*;
 import org.apache.beam.sdk.values.TypeDescriptor;
 import org.apache.beam.vendor.grpc.v1p48p1.com.google.gson.Gson;
+import org.apache.beam.vendor.grpc.v1p48p1.com.google.gson.GsonBuilder;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.checkerframework.checker.initialization.qual.Initialized;
+import org.checkerframework.checker.nullness.qual.NonNull;
+import org.checkerframework.checker.nullness.qual.UnknownKeyFor;
 import org.joda.time.Duration;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 
@@ -45,13 +54,13 @@ public class DoomPipeline {
 
     final Map<String, Object> consumerConfig = new HashMap<>();
     consumerConfig.put("auto.offset.reset", "earliest");
-    consumerConfig.put("group.id", "doom-consumer");
-    consumerConfig.put("group.instance.id", "doom-consumer-beam");
+    consumerConfig.put("group.id",
+        System.getProperty("com.redpanda.doom.GroupId", "doom-consumers"));
+    consumerConfig.put("group.instance.id",
+        System.getProperty("com.redpanda.doom.GroupInstanceId", "doom-beam-consumer"));
     consumerConfig.put("security.protocol", "SASL_SSL");
     consumerConfig.put("sasl.mechanism", "SCRAM-SHA-256");
     consumerConfig.put("sasl.jaas.config", jassConfig);
-
-    final Gson gson = new Gson();
 
     p.apply(
             KafkaIO.<String, String>read()
@@ -62,10 +71,19 @@ public class DoomPipeline {
                 .withConsumerConfigUpdates(consumerConfig)
                 .withoutMetadata())
         .apply("Create Values", Values.create())
-        .apply("Deserialize JSON",
-            MapElements
-                .into(TypeDescriptor.of(Event.class))
-                .via((String s) -> gson.fromJson(s, Event.class)))
+        .apply("Deserialize JSON", ParDo.of(new DoFn<String, Event>() {
+          private Gson gson;
+          @Setup
+          public void setUp() {
+            gson = new Gson();
+          }
+
+          @ProcessElement
+          public void processElement(ProcessContext context) {
+            final String json = context.element();
+            context.output(gson.fromJson(json, Event.class));
+          }
+        }))
         .apply("Just Print",
             MapElements
                 .via(new SimpleFunction<Event, Event>() {
