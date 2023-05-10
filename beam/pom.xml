@@ -211,18 +211,13 @@
     </dependency>
 
     <!-- Adds a dependency on the Beam Google Cloud Platform IO module. -->
+    <!-- remove for now
     <dependency>
       <groupId>org.apache.beam</groupId>
       <artifactId>beam-sdks-java-io-google-cloud-platform</artifactId>
       <version>${beam.version}</version>
     </dependency>
-
-    <!-- Adds a dependency on the Python Multi-language pipelines API module. -->
-    <dependency>
-      <groupId>org.apache.beam</groupId>
-      <artifactId>beam-sdks-java-extensions-python</artifactId>
-      <version>${beam.version}</version>
-    </dependency>
+    -->
 
     <!-- Adds a dependency on the Beam Kafka IO module. -->
     <dependency>

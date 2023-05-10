@@ -17,17 +17,22 @@
  */
 package com.redpanda.doom;
 
+import com.redpanda.doom.model.Event;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.io.kafka.KafkaIO;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
-import org.apache.beam.sdk.transforms.DoFn;
-import org.apache.beam.sdk.transforms.ParDo;
+import org.apache.beam.sdk.transforms.MapElements;
+import org.apache.beam.sdk.transforms.SimpleFunction;
 import org.apache.beam.sdk.transforms.Values;
+import org.apache.beam.sdk.values.TypeDescriptor;
+import org.apache.beam.vendor.grpc.v1p48p1.com.google.gson.Gson;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.joda.time.Duration;
 
 import java.util.HashMap;
 import java.util.Map;
+
 
 public class DoomPipeline {
   public static void main(String[] args) {
@@ -46,6 +51,8 @@ public class DoomPipeline {
     consumerConfig.put("sasl.mechanism", "SCRAM-SHA-256");
     consumerConfig.put("sasl.jaas.config", jassConfig);
 
+    final Gson gson = new Gson();
+
     p.apply(
             KafkaIO.<String, String>read()
                 .withBootstrapServers(System.getProperty("com.redpanda.doom.BootstrapServers", "localhost"))
@@ -54,16 +61,21 @@ public class DoomPipeline {
                 .withValueDeserializer(StringDeserializer.class)
                 .withConsumerConfigUpdates(consumerConfig)
                 .withoutMetadata())
-        .apply(Values.create())
-        .apply(
-            "Just Print",
-            ParDo.of(
-                new DoFn<String, String>() {
-                  @ProcessElement
-                  public void processElement(ProcessContext c) {
-                    System.out.println(c.element());
+        .apply("Create Values", Values.create())
+        .apply("Deserialize JSON",
+            MapElements
+                .into(TypeDescriptor.of(Event.class))
+                .via((String s) -> gson.fromJson(s, Event.class)))
+        .apply("Just Print",
+            MapElements
+                .via(new SimpleFunction<Event, Event>() {
+                  public Event apply(Event event) {
+                    System.out.println("Got Event: " + event);
+                    return event;
                   }
                 }));
-    p.run().waitUntilFinish();
+
+    // For now during dev, just run for 30s.
+    p.run().waitUntilFinish(Duration.standardSeconds(30));
   }
 }
