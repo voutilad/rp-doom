@@ -7,29 +7,18 @@ import json
 from pyflink.common import (
     Encoder, SimpleStringSchema, Time, Types, WatermarkStrategy
 )
+from pyflink.common.watermark_strategy import WatermarkStrategy
 from pyflink.datastream import (
     ProcessWindowFunction, StreamExecutionEnvironment, RuntimeExecutionMode
 )
-from pyflink.datastream.connectors.kafka import FlinkKafkaConsumer
+from pyflink.datastream.connectors.kafka import (
+    KafkaSource, KafkaOffsetsInitializer
+)
 from pyflink.datastream.formats.json import JsonRowDeserializationSchema
-from pyflink.datastream.window import SlidingEventTimeWindows
+from pyflink.datastream.window import SlidingProcessingTimeWindows, TimeWindow
 
 from typing import Any, Dict, Iterable, Tuple
 
-
-def load_json_schema(path: str) -> JsonRowDeserializationSchema:
-    """
-    Load a JSON schema file from a given path and build a Flink Deserializer.
-    """
-    # XXX this just plain sucks and doesn't work?
-    with open(path, mode="r") as f:
-        json = f.read()
-        return (
-            JsonRowDeserializationSchema
-            .builder()
-            .json_schema(json)
-            .build()
-        )
 
 def build_jaas_config(mechanism: str, username: str, password: str):
     if mechanism.startswith("SCRAM"):
@@ -40,13 +29,20 @@ def build_jaas_config(mechanism: str, username: str, password: str):
 
 class LoggingWindowFunction(ProcessWindowFunction):
     """"""
-    def process(self, key: str, context: ProcessWindowFunction.Context,
+    def process(self, key: str, context: ProcessWindowFunction.Context[TimeWindow],
                 elements: Iterable[Tuple[str, int]]) -> Iterable[str]:
         msg = "(empty?)"
         if len(elements) > 0:
-            msg = f"(key: {key}, sz: {len(elements)}, head: {elements[0]})"
+            msg = f"(key: {key}, sz: {len(elements)}, " + \
+                f"start: {context.window().start}, end: {context.window().end})"
         print(msg)
         yield msg
+
+
+def echo(x: Any) -> Any:
+    """Debugging echo function for use in a DataStream."""
+    print(f">>> {x}")
+    return x
 
 
 def job(config: Dict[str, Any]):
@@ -62,36 +58,45 @@ def job(config: Dict[str, Any]):
         config.get("password", "doom"),
     )
 
-    # Wire up our connection to Redpanda.
-    redpanda = FlinkKafkaConsumer(
-        topics=config.get("topics", "doom"),
-        deserialization_schema=SimpleStringSchema(),
-        properties={
-            "bootstrap.servers": config.get("bootstrap_servers",
-                                            "localhost:9092"),
-            "group.id": config.get("group_id", "doom-consumer"),
+    # Wire up our connection to Redpanda as our source.
+    redpanda = (
+        KafkaSource
+        .builder()
+        .set_bootstrap_servers(config.get("bootstrap_servers", "localhost:9092"))
+        .set_topics(config.get("topics", "doom"))
+        .set_group_id(config.get("group_id", "doom"))
+        .set_value_only_deserializer(SimpleStringSchema())
+        .set_starting_offsets(KafkaOffsetsInitializer.latest())
+        .set_properties({
             "security.protocol": config.get("security_protocol", "SASL_SSL"),
             "sasl.mechanism": config.get("sasl_mechanism", "PLAIN"),
             "sasl.jaas.config": jaas,
-        }
+        })
+        .build()
     )
 
+    #
     # Our pipeline: aggregate moves in sliding windows, recording average speed.
+    #
     ds = (
         env
-        .add_source(redpanda)
+        .from_source(
+            source=redpanda,
+            watermark_strategy=WatermarkStrategy.for_monotonous_timestamps(),
+            source_name="Redpanda"
+        )
         .map(lambda row: json.loads(row))
         .filter(lambda row: row.get("type", "") == "move")
-        .key_by(lambda row: row["session"], key_type=Types.STRING())
-        .window(SlidingEventTimeWindows.of(Time.milliseconds(5000),
-                                           Time.milliseconds(500)))
-        .process(LoggingWindowFunction())
+        # .map(echo) # uncomment to debug
+        .key_by(lambda row: row.get("session", ""), key_type=Types.STRING())
+        .window(SlidingProcessingTimeWindows.of(Time.milliseconds(1000),
+                                                Time.milliseconds(250)))
+        .process(LoggingWindowFunction(), Types.STRING())
     )
 
     # Consume the stream.
-    with ds.execute_and_collect() as results:
-        for result in results:
-            print(result)
+    ds.print()
+    env.execute()
 
 
 if __name__ == "__main__":
