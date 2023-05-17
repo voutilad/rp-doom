@@ -27,17 +27,29 @@ def build_jaas_config(mechanism: str, username: str, password: str):
         raise RuntimeException("FINISH SUPPORTING NON-SCRAM!")
 
 
+
 class LoggingWindowFunction(ProcessWindowFunction):
     """"""
     def process(self, key: str, context: ProcessWindowFunction.Context[TimeWindow],
-                elements: Iterable[Tuple[str, int]]) -> Iterable[str]:
+                elements: Iterable[Dict[str, Any]]) -> Iterable[str]:
         msg = "(empty?)"
         if len(elements) > 0:
             msg = f"(key: {key}, sz: {len(elements)}, " + \
                 f"start: {context.window().start}, end: {context.window().end})"
-        print(msg)
+        # print(msg)
         yield msg
 
+
+class ActionRateFunction(ProcessWindowFunction):
+    def __init__(self, action_type: str):
+        self.action_type = action_type
+
+    def process(self, key: str, context: ProcessWindowFunction.Context[TimeWindow],
+                elements: Iterable[Dict[str, Any]]) -> Iterable[Tuple[str, float, str]]:
+        n = len(elements)
+        delta = (context.window().end - context.window().start) / 1000.0
+        val = float(n) / delta
+        yield (key, val, self.action_type)
 
 def echo(x: Any) -> Any:
     """Debugging echo function for use in a DataStream."""
@@ -86,16 +98,33 @@ def job(config: Dict[str, Any]):
             source_name="Redpanda"
         )
         .map(lambda row: json.loads(row))
+    )
+
+    hits = (
+        ds
+        .filter(lambda row: row.get("type", "") == "hit")
+        .key_by(lambda row: row.get("session", ""), key_type=Types.STRING())
+        .window(SlidingProcessingTimeWindows.of(Time.milliseconds(5000),
+                                                Time.milliseconds(1000)))
+        .process(ActionRateFunction("hit"),
+                 Types.TUPLE([Types.STRING(), Types.FLOAT(), Types.STRING()]))
+    )
+
+    moves = (
+        ds
         .filter(lambda row: row.get("type", "") == "move")
-        # .map(echo) # uncomment to debug
         .key_by(lambda row: row.get("session", ""), key_type=Types.STRING())
         .window(SlidingProcessingTimeWindows.of(Time.milliseconds(1000),
                                                 Time.milliseconds(250)))
-        .process(LoggingWindowFunction(), Types.STRING())
+        .process(ActionRateFunction("move"),
+                 Types.TUPLE([Types.STRING(), Types.FLOAT(), Types.STRING()]))
     )
 
+    # Sync to stdout for now.
+    hits.print()
+    moves.print()
+
     # Consume the stream.
-    ds.print()
     env.execute()
 
 
