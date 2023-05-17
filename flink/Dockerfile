@@ -10,10 +10,11 @@ USER snek
 ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-arm64
 RUN python3 -m venv /home/snek/venv && \
     /home/snek/venv/bin/pip install -U pip wheel
+ENV PATH="/home/snek/venv/bin:${PATH}"
 
 COPY requirements.txt /home/snek/requirements.txt
 RUN /home/snek/venv/bin/pip install -r /home/snek/requirements.txt && \
     pip cache purge
 
 WORKDIR /work
-ENTRYPOINT [ "/home/snek/venv/bin/python" ]
+ENTRYPOINT [ "python3" ]

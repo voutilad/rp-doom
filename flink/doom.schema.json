@@ -80,10 +80,7 @@
             "default": {},
             "title": "The actor Schema",
             "required": [
-                "position",
                 "type",
-                "health",
-                "armor",
                 "id"
             ],
             "properties": {
@@ -200,9 +197,7 @@
             "default": {},
             "title": "The target Schema",
             "required": [
-                "position",
                 "type",
-                "health",
                 "id"
             ],
             "properties": {
