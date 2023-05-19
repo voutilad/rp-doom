@@ -10,15 +10,20 @@ public class Frame implements Serializable {
 
   /* Zero-arg construct for Gson support. */
   private Frame() {
-    this.millis = Integer.MAX_VALUE;
+    this.millis = Long.MAX_VALUE;
     this.tic = Integer.MAX_VALUE;
   }
 
-  private int millis;
+  public Frame(long millis, int tic) {
+    this.millis = millis;
+    this.tic = tic;
+  }
+
+  private long millis;
 
   private int tic;
 
-  public int getMillis() {
+  public long getMillis() {
     return millis;
   }
 

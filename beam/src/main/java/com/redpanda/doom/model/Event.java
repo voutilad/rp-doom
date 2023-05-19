@@ -41,6 +41,15 @@ public class Event implements Serializable {
     this.target = Actor.EMPTY_ACTOR;
   }
 
+  public Event(String session, long counter, String type, Frame frame, Actor actor, Actor target) {
+    this.session = session;
+    this.counter = counter;
+    this.type = type;
+    this.frame = frame;
+    this.actor = actor;
+    this.target = target;
+  }
+
   public static Event fromJson(String json) {
     return GSON.fromJson(json, Event.class);
   }

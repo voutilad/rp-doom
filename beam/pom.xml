@@ -22,34 +22,24 @@
 
   <groupId>com.redpanda</groupId>
   <artifactId>doom</artifactId>
-  <version>0.1</version>
+  <version>0.1.0-SNAPSHOT</version>
 
   <packaging>jar</packaging>
 
   <properties>
     <beam.version>2.46.0</beam.version>
 
-    <bigquery.version>v2-rev20220924-2.0.0</bigquery.version>
-    <google-api-client.version>2.0.0</google-api-client.version>
     <guava.version>31.1-jre</guava.version>
     <hamcrest.version>2.1</hamcrest.version>
-    <jackson.version>2.14.1</jackson.version>
-    <joda.version>2.10.10</joda.version>
     <junit.version>4.13.1</junit.version>
     <kafka.version>2.4.1</kafka.version>
-    <libraries-bom.version>26.8.0</libraries-bom.version>
     <maven-compiler-plugin.version>3.7.0</maven-compiler-plugin.version>
     <maven-exec-plugin.version>1.6.0</maven-exec-plugin.version>
     <maven-jar-plugin.version>3.0.2</maven-jar-plugin.version>
     <maven-shade-plugin.version>3.1.0</maven-shade-plugin.version>
     <mockito.version>3.7.7</mockito.version>
-    <pubsub.version>v1-rev20220904-2.0.0</pubsub.version>
     <slf4j.version>1.7.30</slf4j.version>
-    <spark.version>3.1.2</spark.version>
-    <hadoop.version>2.10.2</hadoop.version>
     <maven-surefire-plugin.version>3.0.0-M5</maven-surefire-plugin.version>
-    <nemo.version>0.1</nemo.version>
-    <flink.artifact.name>beam-runners-flink-1.15</flink.artifact.name>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
   </properties>
@@ -75,8 +65,8 @@
         <artifactId>maven-compiler-plugin</artifactId>
         <version>${maven-compiler-plugin.version}</version>
         <configuration>
-          <source>1.8</source>
-          <target>1.8</target>
+          <source>11</source>
+          <target>11</target>
         </configuration>
       </plugin>
 
@@ -210,15 +200,6 @@
       <version>${beam.version}</version>
     </dependency>
 
-    <!-- Adds a dependency on the Beam Google Cloud Platform IO module. -->
-    <!-- remove for now
-    <dependency>
-      <groupId>org.apache.beam</groupId>
-      <artifactId>beam-sdks-java-io-google-cloud-platform</artifactId>
-      <version>${beam.version}</version>
-    </dependency>
-    -->
-
     <!-- Adds a dependency on the Beam Kafka IO module. -->
     <dependency>
       <groupId>org.apache.beam</groupId>
@@ -241,14 +222,12 @@
 
     <dependency>
       <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-jdk14</artifactId>
+      <artifactId>slf4j-simple</artifactId>
       <version>${slf4j.version}</version>
-      <!-- When loaded at runtime this will wire up slf4j to the JUL backend -->
       <scope>runtime</scope>
     </dependency>
 
-    <!-- Hamcrest and JUnit are required dependencies of PAssert,
-         which is used in the main code of DebuggingWordCount example. -->
+    <!-- Hamcrest and JUnit are required dependencies of PAssert. -->
     <dependency>
       <groupId>org.hamcrest</groupId>
       <artifactId>hamcrest-core</artifactId>
@@ -289,14 +268,6 @@
         <groupId>com.google.guava</groupId>
         <artifactId>guava</artifactId>
         <version>${guava.version}</version>  <!-- "-jre" for Java 8 or higher -->
-      </dependency>
-      <!-- GCP libraries BOM sets the version for google http client -->
-      <dependency>
-        <groupId>com.google.cloud</groupId>
-        <artifactId>libraries-bom</artifactId>
-        <version>${libraries-bom.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
       </dependency>
     </dependencies>
   </dependencyManagement>

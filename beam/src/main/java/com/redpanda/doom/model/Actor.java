@@ -28,6 +28,14 @@ public class Actor implements Serializable {
     this.id = Long.MAX_VALUE;
   }
 
+  public Actor(Position position, String type, int health, int armor, long id) {
+    this.position = position;
+    this.type = type;
+    this.health = health;
+    this.armor = armor;
+    this.id = id;
+  }
+
   public Position getPosition() {
     return position;
   }

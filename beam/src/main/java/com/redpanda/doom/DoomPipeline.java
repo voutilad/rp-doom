@@ -17,83 +17,143 @@
  */
 package com.redpanda.doom;
 
+import com.redpanda.doom.dofn.EventDeserializer;
 import com.redpanda.doom.model.Event;
 import org.apache.beam.sdk.Pipeline;
-import org.apache.beam.sdk.coders.Coder;
-import org.apache.beam.sdk.coders.CoderException;
-import org.apache.beam.sdk.coders.CoderRegistry;
 import org.apache.beam.sdk.io.kafka.KafkaIO;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
-import org.apache.beam.sdk.transforms.*;
-import org.apache.beam.sdk.values.TypeDescriptor;
-import org.apache.beam.vendor.grpc.v1p48p1.com.google.gson.Gson;
-import org.apache.beam.vendor.grpc.v1p48p1.com.google.gson.GsonBuilder;
+import org.apache.beam.sdk.transforms.DoFn;
+import org.apache.beam.sdk.transforms.GroupByKey;
+import org.apache.beam.sdk.transforms.ParDo;
+import org.apache.beam.sdk.transforms.Values;
+import org.apache.beam.sdk.transforms.windowing.SlidingWindows;
+import org.apache.beam.sdk.transforms.windowing.Window;
+import org.apache.beam.sdk.values.KV;
+import org.apache.beam.sdk.values.PCollection;
 import org.apache.kafka.common.serialization.StringDeserializer;
-import org.checkerframework.checker.initialization.qual.Initialized;
-import org.checkerframework.checker.nullness.qual.NonNull;
-import org.checkerframework.checker.nullness.qual.UnknownKeyFor;
 import org.joda.time.Duration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.util.HashMap;
-import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Properties;
+import java.util.logging.Level;
 
 
 public class DoomPipeline {
-  public static void main(String[] args) {
-    final PipelineOptions options = PipelineOptionsFactory.create();
-    final Pipeline p = Pipeline.create(options);
+  private static Logger logger;
 
-    final String jassConfig = "org.apache.kafka.common.security.scram.ScramLoginModule required " +
-        "username=\"" + System.getProperty("com.redpanda.doom.Username", "admin") +
-        "\" password=\"" + System.getProperty("com.redpanda.doom.Password", "admin") + "\";";
+  public static String withNamespace(String keyName) {
+    return DoomPipeline.class.getPackage().getName() + "." + keyName;
+  }
 
-    final Map<String, Object> consumerConfig = new HashMap<>();
-    consumerConfig.put("auto.offset.reset", "earliest");
-    consumerConfig.put("group.id",
-        System.getProperty("com.redpanda.doom.GroupId", "doom-consumers"));
-    consumerConfig.put("group.instance.id",
-        System.getProperty("com.redpanda.doom.GroupInstanceId", "doom-beam-consumer"));
-    consumerConfig.put("security.protocol", "SASL_SSL");
-    consumerConfig.put("sasl.mechanism", "SCRAM-SHA-256");
-    consumerConfig.put("sasl.jaas.config", jassConfig);
+  /**
+   * Generate our Redpanda Consumer configuration using a provided {@PipelineOptions}, falling back to the system
+   * properties, and finally to default values.
+   *
+   * @param options
+   * @return new {@Map} of consumer configs
+   */
+  public static Map<String, Object> consumerConfig(PipelineOptions options) {
+    // TODO: use pipeline options :)
+    final Properties props = System.getProperties();
+    final Map<String, Object> config = new HashMap<>();
 
-    p.apply(
+    // Instead of exposing the security protocol string, expose a simple boolean flag for TLS.
+    final boolean useTls = props
+        .getProperty(withNamespace("useTls"), "false")
+        .equalsIgnoreCase("true");
+
+    // SASL?
+    final String mechanism = props.getProperty(withNamespace("saslMechanism"), "");
+    if (mechanism.equalsIgnoreCase("plain")
+        || mechanism.equalsIgnoreCase("scram-sha-256")
+        || mechanism.equalsIgnoreCase("scram-sha-512")) {
+
+        // Be stylish and make sure we use all caps and yell our mechanism at the machine.
+        config.put("sasl.mechanism", mechanism.toUpperCase(Locale.ENGLISH));
+
+        // Assemble our jaasConfig string...it's a beast.
+        final String username = props.getProperty(withNamespace("username"), "doom");
+        final String password = props.getProperty(withNamespace("password"), "doom");
+        final String jaasConfig = ((mechanism.equalsIgnoreCase("plain"))
+            ? "org.apache.kafka.common.security.plain.PlainLoginModule required "
+            : "org.apache.kafka.common.security.scram.ScramLoginModule required ")
+            + "username=\"" + username + "\" password=\"" + password + "\";";
+        config.put("sasl.jaas.config", jaasConfig);
+
+        if (useTls)
+          config.put("security.protocol", "SASL_SSL");
+        else
+          config.put("security.protocol", "SASL_PLAINTEXT");
+    } else {
+      // No SASL Mechanism. Sad!
+      if (useTls)
+        config.put("security.protocol", "SSL");
+      else
+        config.put("security.protocol", "PLAINTEXT");
+    }
+
+    // Additional properties...
+    config.put("auto.offset.reset", "latest");
+    config.put("group.id", props.getProperty(withNamespace("groupId"), "doom"));
+    config.put("group.instance.id", props.getProperty(withNamespace("groupInstanceId"), "beam-consumer"));
+
+    return config;
+  }
+
+  public static void run(PipelineOptions options) {
+    final Pipeline pipeline = Pipeline.create(options);
+    final Map<String, Object> consumerConfig = consumerConfig(options);
+
+    /*
+     * Group game events into sliding Windows.
+     */
+    PCollection<KV<String, Iterable<Event>>> groupedEvents = pipeline
+        .apply("Connect to Redpanda",
             KafkaIO.<String, String>read()
-                .withBootstrapServers(System.getProperty("com.redpanda.doom.BootstrapServers", "localhost"))
+                .withBootstrapServers(System.getProperty(withNamespace("bootstrapServers"), "localhost:9092"))
                 .withTopic("doom")
                 .withKeyDeserializer(StringDeserializer.class)
                 .withValueDeserializer(StringDeserializer.class)
                 .withConsumerConfigUpdates(consumerConfig)
                 .withoutMetadata())
-        .apply("Create Values", Values.create())
-        .apply("Deserialize JSON", ParDo.of(new DoFn<String, Event>() {
-          private Gson gson;
-          @Setup
-          public void setUp() {
-            gson = new Gson();
-          }
+        .apply("Extract Values",
+            Values.create())
+        .apply("Deserialize JSON to Events",
+            ParDo.of(new EventDeserializer()))
+        .apply("SlidingWindows",
+            Window.into(SlidingWindows.of(Duration.standardSeconds(2)).every(Duration.millis(250))))
+        .apply("Group By Session",
+            GroupByKey.create());
 
-          @ProcessElement
-          public void processElement(ProcessContext context) {
-            final String json = context.element();
-            context.output(gson.fromJson(json, Event.class));
-          }
-        }))
-        .apply("Just Print",
-            MapElements
-                .via(new SimpleFunction<Event, Event>() {
-                  public Event apply(Event event) {
-                    System.out.println("Got Event: " + event);
-                    return event;
-                  }
-                }));
+    // For now, let's just print to stdout
+    groupedEvents.apply("Print",
+        ParDo.of(new DoFn<KV<String, Iterable<Event>>, Void>() {
+      @ProcessElement
+      public void ProcessElement(ProcessContext context) {
+        System.out.println(context.element());
+        context.output(null);
+      }
+    }));
 
     // For now during dev, just run for 30s.
-    p.run().waitUntilFinish(Duration.standardSeconds(30));
+    pipeline.run().waitUntilFinish(Duration.standardSeconds(30));
+  }
+
+  public static void main(String[] args) {
+    // TODO: command line args to pipeline options
+    // Set up nicer logging output.
+    System.setProperty("org.slf4j.simpleLogger.showDateTime", "true");
+    System.setProperty("org.slf4j.simpleLogger.dateTimeFormat", "[yyyy-MM-dd'T'HH:mm:ss:SSS]");
+    System.setProperty("org.slf4j.simpleLogger.logFile", "System.out");
+    logger = LoggerFactory.getLogger(DoomPipeline.class);
+
+    final PipelineOptions options = PipelineOptionsFactory.create();
+
+    run(options);
   }
 }

@@ -16,6 +16,14 @@ public class Position implements Serializable {
     this.subsector = Long.MAX_VALUE;
   }
 
+  public Position(long x, long y, long z, long angle, long subsector) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    this.angle = angle;
+    this.subsector = subsector;
+  }
+
   private long x;
 
   private long y;
