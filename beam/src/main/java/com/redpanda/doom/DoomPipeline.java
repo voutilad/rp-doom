@@ -17,13 +17,16 @@
  */
 package com.redpanda.doom;
 
+import com.redpanda.doom.dofn.Echo;
 import com.redpanda.doom.dofn.EventDeserializer;
 import com.redpanda.doom.model.Event;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.io.kafka.KafkaIO;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
+import org.apache.beam.sdk.transforms.Count;
 import org.apache.beam.sdk.transforms.DoFn;
+import org.apache.beam.sdk.transforms.Filter;
 import org.apache.beam.sdk.transforms.GroupByKey;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.Values;
@@ -112,7 +115,7 @@ public class DoomPipeline {
     /*
      * Group game events into sliding Windows.
      */
-    PCollection<KV<String, Iterable<Event>>> groupedEvents = pipeline
+    PCollection<KV<String, Event>> windowedEvents = pipeline
         .apply("Connect to Redpanda",
             KafkaIO.<String, String>read()
                 .withBootstrapServers(System.getProperty(withNamespace("bootstrapServers"), "localhost:9092"))
@@ -126,19 +129,19 @@ public class DoomPipeline {
         .apply("Deserialize JSON to Events",
             ParDo.of(new EventDeserializer()))
         .apply("SlidingWindows",
-            Window.into(SlidingWindows.of(Duration.standardSeconds(2)).every(Duration.millis(250))))
-        .apply("Group By Session",
-            GroupByKey.create());
+            Window.into(SlidingWindows.of(Duration.standardSeconds(3)).every(Duration.millis(500))));
+
+    PCollection<KV<String, Event>> moves = windowedEvents
+        .apply(Filter.by(kv -> kv.getValue().getType().equalsIgnoreCase("move")));
+    PCollection<KV<String, Event>> hits = windowedEvents
+        .apply(Filter.by(kv -> kv.getValue().getType().equalsIgnoreCase("hits")));
+
+    PCollection<KV<String, Long>> movesPerUser = moves.apply(Count.perKey());
+    PCollection<KV<String, Long>> hitsPerUser = hits.apply(Count.perKey());
 
     // For now, let's just print to stdout
-    groupedEvents.apply("Print",
-        ParDo.of(new DoFn<KV<String, Iterable<Event>>, Void>() {
-      @ProcessElement
-      public void ProcessElement(ProcessContext context) {
-        System.out.println(context.element());
-        context.output(null);
-      }
-    }));
+    movesPerUser.apply(ParDo.of(new Echo("moves: ")));
+    hitsPerUser.apply(ParDo.of(new Echo("hits: ")));
 
     // For now during dev, just run for 30s.
     pipeline.run().waitUntilFinish(Duration.standardSeconds(30));
@@ -150,6 +153,10 @@ public class DoomPipeline {
     System.setProperty("org.slf4j.simpleLogger.showDateTime", "true");
     System.setProperty("org.slf4j.simpleLogger.dateTimeFormat", "[yyyy-MM-dd'T'HH:mm:ss:SSS]");
     System.setProperty("org.slf4j.simpleLogger.logFile", "System.out");
+
+    System.setProperty("org.slf4j.simpleLogger.log.org.apache.kafka", "warn");
+    System.setProperty("org.slf4j.simpleLogger.log.org.apache.beam.sdk.io.kafka.KafkaUnboundedReader", "warn");
+
     logger = LoggerFactory.getLogger(DoomPipeline.class);
 
     final PipelineOptions options = PipelineOptionsFactory.create();
