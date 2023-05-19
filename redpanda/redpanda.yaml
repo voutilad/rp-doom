@@ -1,3 +1,4 @@
+# node configuration
 redpanda:
     admin:
       address: 0.0.0.0
@@ -10,7 +11,6 @@ redpanda:
         enabled: true
         require_client_auth: false
     data_directory: /var/lib/redpanda/data
-    seed_servers: []
     developer_mode: true
     auto_create_topics_enabled: true
     fetch_reads_debounce_timeout: 10
@@ -19,7 +19,3 @@ redpanda:
     log_segment_size_min: 1
     storage_min_free_bytes: 10485760
     topic_partitions_per_shard: 1000
-rpk:
-    enable_usage_stats: true
-    coredump_dir: /var/lib/redpanda/coredump
-    overprovisioned: true
