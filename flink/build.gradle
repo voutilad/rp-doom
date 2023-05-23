@@ -6,8 +6,9 @@ plugins {
 }
 
 ext {
-    javaVersion = '1.8'
+    javaVersion = '11'
     flinkVersion = '1.17.0'
+    gsonVersion = '2.10.1'
     scalaBinaryVersion = '2.12'
     slf4jVersion = '1.7.36'
     log4jVersion = '2.17.1'
@@ -48,7 +49,7 @@ repositories {
 // shadowJar yet (see https://github.com/johnrengelman/shadow/issues/159).
 // -> Explicitly define the // libraries we want to be included in the "flinkShadowJar" configuration!
 configurations {
-    flinkShadowJar // dependencies which go into the shadowJar
+    flinkShadowJar
 
     // always exclude these (also from transitive dependencies) since they are provided by Flink
     flinkShadowJar.exclude group: 'org.apache.flink', module: 'force-shading'
@@ -70,12 +71,13 @@ dependencies {
         implementation "org.apache.flink:flink-streaming-java_${scalaBinaryVersion}:${flinkVersion}"
         implementation "org.apache.flink:flink-clients_${scalaBinaryVersion}:${flinkVersion}"
     }
-
+    implementation "org.apache.flink:flink-statebackend-rocksdb:${flinkVersion}"
     // --------------------------------------------------------------
     // Dependencies that should be part of the shadow jar, e.g.
     // connectors. These must be in the flinkShadowJar configuration!
     // --------------------------------------------------------------
-    //flinkShadowJar "org.apache.flink:flink-connector-kafka:${flinkVersion}"
+    flinkShadowJar "org.apache.flink:flink-connector-kafka:${flinkVersion}"
+    flinkShadowJar "com.google.code.gson:gson:${gsonVersion}"
 
     runtimeOnly "org.apache.logging.log4j:log4j-slf4j-impl:${log4jVersion}"
     runtimeOnly "org.apache.logging.log4j:log4j-api:${log4jVersion}"
