@@ -25,15 +25,16 @@ import org.apache.beam.sdk.io.kafka.KafkaIO;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.transforms.Count;
-import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.Filter;
 import org.apache.beam.sdk.transforms.GroupByKey;
+import org.apache.beam.sdk.transforms.MapElements;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.Values;
 import org.apache.beam.sdk.transforms.windowing.SlidingWindows;
 import org.apache.beam.sdk.transforms.windowing.Window;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TypeDescriptors;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.joda.time.Duration;
 import org.slf4j.Logger;
@@ -43,22 +44,24 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
-import java.util.logging.Level;
+import java.util.stream.StreamSupport;
 
 
 public class DoomPipeline {
   private static Logger logger;
+  final static int DEFAULT_WINDOW_WIDTH_MS = 1_000;
+  final static int DEFAULT_SLIDE_WIDTH_MS = 25;
 
   public static String withNamespace(String keyName) {
     return DoomPipeline.class.getPackage().getName() + "." + keyName;
   }
 
   /**
-   * Generate our Redpanda Consumer configuration using a provided {@PipelineOptions}, falling back to the system
+   * Generate our Redpanda Consumer configuration using a provided {@link PipelineOptions}, falling back to the system
    * properties, and finally to default values.
    *
-   * @param options
-   * @return new {@Map} of consumer configs
+   * @param options {@link PipelineOptions}
+   * @return new {@link Map} of consumer configs
    */
   public static Map<String, Object> consumerConfig(PipelineOptions options) {
     // TODO: use pipeline options :)
@@ -112,6 +115,15 @@ public class DoomPipeline {
     final Pipeline pipeline = Pipeline.create(options);
     final Map<String, Object> consumerConfig = consumerConfig(options);
 
+    // Log our intended configuration, but don't print the password ;-)
+    logger.info("Prepared Redpanda consumer config: ");
+    consumerConfig.forEach((k, v) -> {
+      var value = k.equalsIgnoreCase("sasl.jaas.config")
+          ? v.toString().replaceAll("password=\"(.*?)\"", "password=\"*********\"")
+          : v.toString();
+      logger.info("  " + k + ": " + value);
+    });
+
     /*
      * Group game events into sliding Windows.
      */
@@ -121,30 +133,49 @@ public class DoomPipeline {
                 .withBootstrapServers(System.getProperty(withNamespace("bootstrapServers"), "localhost:9092"))
                 .withTopic("doom")
                 .withKeyDeserializer(StringDeserializer.class)
-                .withValueDeserializer(StringDeserializer.class)
+                .withValueDeserializer(StringDeserializer.class) // XXX: for now we'll do JSON decoding in the pipeline
                 .withConsumerConfigUpdates(consumerConfig)
                 .withoutMetadata())
         .apply("Extract Values",
             Values.create())
         .apply("Deserialize JSON to Events",
             ParDo.of(new EventDeserializer()))
+        .apply("Filter to only Player Events",
+            Filter.by(Util.actorTypeIs("player")))
         .apply("SlidingWindows",
-            Window.into(SlidingWindows.of(Duration.standardSeconds(3)).every(Duration.millis(500))));
+            Window.into(SlidingWindows.of(Duration.millis(DEFAULT_WINDOW_WIDTH_MS))
+                .every(Duration.millis(DEFAULT_SLIDE_WIDTH_MS))));
 
+    // Create filtered streams based on event type, windowing as appropriate.
     PCollection<KV<String, Event>> moves = windowedEvents
-        .apply(Filter.by(kv -> kv.getValue().getType().equalsIgnoreCase("move")));
-    PCollection<KV<String, Event>> hits = windowedEvents
-        .apply(Filter.by(kv -> kv.getValue().getType().equalsIgnoreCase("hits")));
-
+        .apply("Filter Moves", Filter.by(Util.eventTypeIs("move")));
     PCollection<KV<String, Long>> movesPerUser = moves.apply(Count.perKey());
-    PCollection<KV<String, Long>> hitsPerUser = hits.apply(Count.perKey());
+
+
+    PCollection<KV<String, Double>> killRatePerUser = windowedEvents
+        .apply("Collect kills per Player", GroupByKey.create())
+        .apply("Compute KPS per Player", MapElements
+            .into(TypeDescriptors.kvs(TypeDescriptors.strings(), TypeDescriptors.doubles()))
+            .via(kv -> {
+              long cnt = 0;
+              assert kv != null && kv.getValue() != null;
+              cnt = StreamSupport.stream(kv.getValue().spliterator(), true)
+                  .filter(ev -> ev.getType().equalsIgnoreCase("killed")).count();
+              if (cnt == 0)
+                return KV.of(kv.getKey(), 0d);
+              double rateMillis = (cnt * 1.0d) / (DEFAULT_WINDOW_WIDTH_MS);
+              if (Double.isInfinite(rateMillis))
+                return KV.of(kv.getKey(), 0.0d);
+              return KV.of(kv.getKey(), rateMillis * 1000);
+            }));
 
     // For now, let's just print to stdout
-    movesPerUser.apply(ParDo.of(new Echo("moves: ")));
-    hitsPerUser.apply(ParDo.of(new Echo("hits: ")));
+    // movesPerUser.apply(ParDo.of(new Echo("moves: ")));
+    killRatePerUser.apply("Echo KPS", ParDo.of(new Echo("kills: ")));
 
     // For now during dev, just run for 30s.
     pipeline.run().waitUntilFinish(Duration.standardSeconds(30));
+    logger.info("Pipeline finished.");
   }
 
   public static void main(String[] args) {
