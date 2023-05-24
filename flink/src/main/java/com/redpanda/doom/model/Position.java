@@ -8,7 +8,7 @@ public class Position implements Serializable {
   /* Non-null placeholder for empty or unset position value. */
   public static final Position EMPTY_POSITION = new Position();
 
-  private Position() {
+  public Position() {
     this.x = Long.MAX_VALUE;
     this.y = Long.MAX_VALUE;
     this.z = Long.MAX_VALUE;
@@ -52,6 +52,26 @@ public class Position implements Serializable {
 
   public long getSubsector() {
     return subsector;
+  }
+
+  public void setX(long x) {
+    this.x = x;
+  }
+
+  public void setY(long y) {
+    this.y = y;
+  }
+
+  public void setZ(long z) {
+    this.z = z;
+  }
+
+  public void setAngle(long angle) {
+    this.angle = angle;
+  }
+
+  public void setSubsector(long subsector) {
+    this.subsector = subsector;
   }
 
   @Override

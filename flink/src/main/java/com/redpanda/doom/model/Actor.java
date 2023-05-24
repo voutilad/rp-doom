@@ -20,7 +20,7 @@ public class Actor implements Serializable {
   private long id;
 
   /* Zero-arg constructor for Gson support. */
-  private Actor() {
+  public Actor() {
     this.position = Position.EMPTY_POSITION;
     this.type = "UNKNOWN_TYPE";
     this.health = Integer.MAX_VALUE;
@@ -33,6 +33,26 @@ public class Actor implements Serializable {
     this.type = type;
     this.health = health;
     this.armor = armor;
+    this.id = id;
+  }
+
+  public void setPosition(Position position) {
+    this.position = position;
+  }
+
+  public void setType(String type) {
+    this.type = type;
+  }
+
+  public void setHealth(int health) {
+    this.health = health;
+  }
+
+  public void setArmor(int armor) {
+    this.armor = armor;
+  }
+
+  public void setId(long id) {
     this.id = id;
   }
 

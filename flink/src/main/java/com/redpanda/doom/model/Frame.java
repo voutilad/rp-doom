@@ -9,7 +9,7 @@ public class Frame implements Serializable {
   public static final Frame EMPTY_FRAME = new Frame();
 
   /* Zero-arg construct for Gson support. */
-  private Frame() {
+  public Frame() {
     this.millis = Long.MAX_VALUE;
     this.tic = Integer.MAX_VALUE;
   }
@@ -29,6 +29,14 @@ public class Frame implements Serializable {
 
   public int getTic() {
     return tic;
+  }
+
+  public void setMillis(long millis) {
+    this.millis = millis;
+  }
+
+  public void setTic(int tic) {
+    this.tic = tic;
   }
 
   @Override

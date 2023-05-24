@@ -1,7 +1,5 @@
 package com.redpanda.doom.model;
 
-import com.google.gson.Gson;
-
 import java.io.Serializable;
 import java.util.Objects;
 
@@ -10,8 +8,6 @@ import java.util.Objects;
  */
 public class Event implements Serializable {
   public static final Event EMPTY_EVENT = new Event();
-
-  private static final Gson GSON = new Gson();
 
   /* Unique session identifier. */
   private String session;
@@ -32,7 +28,7 @@ public class Event implements Serializable {
   private Actor target;
 
   /* Zero-arg constructor for Gson support. */
-  private Event() {
+  public Event() {
     this.session = "UNKNOWN_SESSION";
     this.counter = Long.MAX_VALUE;
     this.type = "UNKNOWN_TYPE";
@@ -48,10 +44,6 @@ public class Event implements Serializable {
     this.frame = frame;
     this.actor = actor;
     this.target = target;
-  }
-
-  public static Event fromJson(String json) {
-    return GSON.fromJson(json, Event.class);
   }
 
   public String getSession() {
@@ -91,6 +83,30 @@ public class Event implements Serializable {
         ", actor=" + actor +
         ", target=" + target +
         '}';
+  }
+
+  public void setSession(String session) {
+    this.session = session;
+  }
+
+  public void setCounter(long counter) {
+    this.counter = counter;
+  }
+
+  public void setType(String type) {
+    this.type = type;
+  }
+
+  public void setFrame(Frame frame) {
+    this.frame = frame;
+  }
+
+  public void setActor(Actor actor) {
+    this.actor = actor;
+  }
+
+  public void setTarget(Actor target) {
+    this.target = target;
   }
 
   @Override

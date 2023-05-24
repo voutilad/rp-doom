@@ -9,20 +9,15 @@ ext {
     javaVersion = '11'
     flinkVersion = '1.17.0'
     gsonVersion = '2.10.1'
-    scalaBinaryVersion = '2.12'
     slf4jVersion = '1.7.36'
     log4jVersion = '2.17.1'
-    flinkVersionNew = flinkVersion.toString().replace("-SNAPSHOT", "") >= "1.17"
 }
 
 // artifact properties
-group = 'com.redpanda'
-version = '0.1-SNAPSHOT'
-if (flinkVersionNew) {
-    mainClassName = 'com.redpanda.DataStreamJob'
-} else {
-    mainClassName = 'com.redpanda.StreamingJob'
-}
+group = 'com.redpanda.doom'
+version = '0.2-SNAPSHOT'
+mainClassName = 'com.redpanda.doom.DoomPipeline'
+
 description = """Flink Quickstart Job"""
 
 sourceCompatibility = javaVersion
@@ -64,20 +59,17 @@ dependencies {
     // Compile-time dependencies that should NOT be part of the
     // shadow jar and are provided in the lib folder of Flink
     // --------------------------------------------------------------
-    if (flinkVersionNew) {
-        implementation "org.apache.flink:flink-streaming-java:${flinkVersion}"
-        implementation "org.apache.flink:flink-clients:${flinkVersion}"
-    } else {
-        implementation "org.apache.flink:flink-streaming-java_${scalaBinaryVersion}:${flinkVersion}"
-        implementation "org.apache.flink:flink-clients_${scalaBinaryVersion}:${flinkVersion}"
-    }
+    implementation "org.apache.flink:flink-streaming-java:${flinkVersion}"
+    implementation "org.apache.flink:flink-clients:${flinkVersion}"
     implementation "org.apache.flink:flink-statebackend-rocksdb:${flinkVersion}"
+
     // --------------------------------------------------------------
     // Dependencies that should be part of the shadow jar, e.g.
     // connectors. These must be in the flinkShadowJar configuration!
     // --------------------------------------------------------------
     flinkShadowJar "org.apache.flink:flink-connector-kafka:${flinkVersion}"
     flinkShadowJar "com.google.code.gson:gson:${gsonVersion}"
+    flinkShadowJar "net.sourceforge.argparse4j:argparse4j:0.9.0"
 
     runtimeOnly "org.apache.logging.log4j:log4j-slf4j-impl:${log4jVersion}"
     runtimeOnly "org.apache.logging.log4j:log4j-api:${log4jVersion}"

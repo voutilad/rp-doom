@@ -20,22 +20,32 @@ package com.redpanda.doom;
 
 import com.google.gson.Gson;
 import com.redpanda.doom.model.Event;
+import net.sourceforge.argparse4j.ArgumentParsers;
+import net.sourceforge.argparse4j.inf.ArgumentParser;
+import net.sourceforge.argparse4j.inf.ArgumentParserException;
+import net.sourceforge.argparse4j.inf.Namespace;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.connector.kafka.source.reader.deserializer.KafkaRecordDeserializationSchema;
 import org.apache.flink.runtime.state.hashmap.HashMapStateBackend;
+import org.apache.flink.streaming.api.CheckpointingMode;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.sink.DiscardingSink;
 import org.apache.flink.streaming.api.functions.windowing.WindowFunction;
 import org.apache.flink.streaming.api.windowing.assigners.SlidingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.util.Collector;
+import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,68 +70,58 @@ import java.util.stream.StreamSupport;
  * method, change the respective entry in the POM.xml file (simply search for 'mainClass').
  */
 public class DoomPipeline {
-
-  private static Logger logger;
   final static int DEFAULT_WINDOW_WIDTH_MS = 1_000;
   final static int DEFAULT_SLIDE_WIDTH_MS = 25;
 
 
-  public static String withNamespace(String keyName) {
-    return DoomPipeline.class.getPackage().getName() + "." + keyName;
-  }
+  public static Properties consumerConfig(Config config) {
+    final Properties props = new Properties();
 
-  public static Properties consumerConfig() {
-    // TODO: use pipeline options :)
-    final Properties systemProps = System.getProperties();
-    final Properties config = new Properties();
+    final boolean useTls = config.getBoolean(Config.KEY_TLS);
+    final String mechanism = config.getString(Config.KEY_SASL_MECHANISM);
 
-    // Instead of exposing the security protocol string, expose a simple boolean flag for TLS.
-    final boolean useTls = systemProps
-        .getProperty(withNamespace("useTls"), "false")
-        .equalsIgnoreCase("true");
-
-    // SASL?
-    final String mechanism = systemProps.getProperty(withNamespace("saslMechanism"), "");
     if (mechanism.equalsIgnoreCase("plain")
         || mechanism.equalsIgnoreCase("scram-sha-256")
         || mechanism.equalsIgnoreCase("scram-sha-512")) {
-
       // Be stylish and make sure we use all caps and yell our mechanism at the machine.
-      config.put("sasl.mechanism", mechanism.toUpperCase(Locale.ENGLISH));
+      props.put("sasl.mechanism", mechanism.toUpperCase(Locale.ENGLISH));
 
       // Assemble our jaasConfig string...it's a beast.
-      final String username = systemProps.getProperty(withNamespace("username"), "doom");
-      final String password = systemProps.getProperty(withNamespace("password"), "doom");
+      final String username = config.getString(Config.KEY_USER);
+      final String password = config.getString(Config.KEY_PASSWORD);
       final String jaasConfig = ((mechanism.equalsIgnoreCase("plain"))
           ? "org.apache.kafka.common.security.plain.PlainLoginModule required "
           : "org.apache.kafka.common.security.scram.ScramLoginModule required ")
           + "username=\"" + username + "\" password=\"" + password + "\";";
-      config.put("sasl.jaas.config", jaasConfig);
+      props.put("sasl.jaas.config", jaasConfig);
 
       if (useTls)
-        config.put("security.protocol", "SASL_SSL");
+        props.put("security.protocol", "SASL_SSL");
       else
-        config.put("security.protocol", "SASL_PLAINTEXT");
+        props.put("security.protocol", "SASL_PLAINTEXT");
     } else {
       // No SASL Mechanism. Sad!
       if (useTls)
-        config.put("security.protocol", "SSL");
+        props.put("security.protocol", "SSL");
       else
-        config.put("security.protocol", "PLAINTEXT");
+        props.put("security.protocol", "PLAINTEXT");
     }
-    return config;
+
+    props.setProperty("group.instance.id", config.getString(Config.KEY_GROUP_INSTANCE_ID));
+
+    return props;
   }
 
-  public static KafkaSource<String> redpandaSource() {
+  public static KafkaSource<String> redpandaSource(Config config) {
     return KafkaSource
         .<String>builder() // XXX you need a type annotation here or Java gets sad :'(
-        .setBootstrapServers("localhost:19092")
-        .setTopics("doom")
-        .setGroupId("doom")
-        .setClientIdPrefix("flinkyboi")
+        .setBootstrapServers(config.getString(Config.KEY_BROKERS))
+        .setTopics(config.getString(Config.KEY_TOPICS))
+        .setGroupId(config.getString(Config.KEY_GROUP_ID))
+        .setClientIdPrefix(config.getString(Config.KEY_CLIENT_ID_PREFIX))
         .setValueOnlyDeserializer(new SimpleStringSchema())
-        .setStartingOffsets(OffsetsInitializer.latest())
-        .setProperties(consumerConfig())
+        .setStartingOffsets(OffsetsInitializer.committedOffsets(OffsetResetStrategy.LATEST))
+        .setProperties(consumerConfig(config))
         .build();
   }
 
@@ -141,42 +141,45 @@ public class DoomPipeline {
     }
   }
 
-  public static void main(String[] args) throws Exception {
-    System.setProperty("org.slf4j.simpleLogger.showDateTime", "true");
-    System.setProperty("org.slf4j.simpleLogger.dateTimeFormat", "[yyyy-MM-dd'T'HH:mm:ss:SSS]");
-    System.setProperty("org.slf4j.simpleLogger.logFile", "System.out");
-
-    System.setProperty("org.slf4j.simpleLogger.log.org.apache.kafka", "warn");
-    System.setProperty("org.slf4j.simpleLogger.log.org.apache.beam.sdk.io.kafka.KafkaUnboundedReader", "warn");
-    System.setProperty("org.slf4j.simpleLogger.log.org.apache.flink.metrics", "off");
-
-    logger = LoggerFactory.getLogger(DoomPipeline.class);
-
-    final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment(
-				Configuration.fromMap(
-						Map.of(
-                "state.backend.type", "rocksdb")));
-    env.setParallelism(1);
-
-    var x = env
-				.fromSource(redpandaSource(), WatermarkStrategy.<String>forMonotonousTimestamps().withIdleness(Duration.ofSeconds(3)), "Redpanda")
+  public static DataStream<?> buildPipeline(StreamExecutionEnvironment env, Config config) {
+    return env
+        .fromSource(
+            redpandaSource(config),
+            WatermarkStrategy.<String>forMonotonousTimestamps().withIdleness(Duration.ofSeconds(3)),
+            "Redpanda")
         .map(new GsonDeserializer()).name("Deserialize JSON")
         .keyBy(Event::getSession)
-				.window(SlidingEventTimeWindows.of(
+        .window(SlidingEventTimeWindows.of(
             Time.milliseconds(DEFAULT_WINDOW_WIDTH_MS),
             Time.milliseconds(DEFAULT_SLIDE_WIDTH_MS)))
         .apply(new WindowFunction<Event, Tuple2<String, Long>, String, TimeWindow>() { // XXX: you need to keep this type hint here!
-					@Override
-					public void apply(String s, TimeWindow window, Iterable<Event> events, Collector<Tuple2<String, Long>> out) throws Exception {
-						final long cnt = StreamSupport.stream(events.spliterator(), true).count();
-						out.collect(Tuple2.of(s, cnt));
-					}
-				});
+          private final Logger logger = LoggerFactory.getLogger("Counter");
+          @Override
+          public void apply(String s, TimeWindow window, Iterable<Event> events, Collector<Tuple2<String, Long>> out) throws Exception {
+            try {
+              final long cnt = StreamSupport.stream(events.spliterator(), false).count();
+              out.collect(Tuple2.of(s, cnt));
+              logger.info("(" + s + ", " + cnt + ")");
+            } catch (Exception e) {
+              logger.error("oh crap", e.getCause());
+            }
+          }
+        }).name("Counter");
+  }
 
+  public static void main(String[] args) throws Exception {
+    Logger logger = LoggerFactory.getLogger(DoomPipeline.class);
+    final Config config = new Config(args);
 
-		logger.info("Starting...");
-    //env.enableCheckpointing(2500);
-    x.print();
-		env.execute();
+    final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment(
+        Configuration.fromMap(
+            Map.of(
+                "state.backend.type", "rocksdb")));
+    var pipeline = buildPipeline(env, config);
+    pipeline.addSink(new DiscardingSink<>()).name("Trashcan"); // For now, sink to the trash.
+
+    logger.info("Starting pipeline.");
+    env.execute();
+    logger.info("Stopping.");
   }
 }
