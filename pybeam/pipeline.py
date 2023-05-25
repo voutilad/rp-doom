@@ -11,7 +11,7 @@ from apache_beam.io.kafka import (
 from apache_beam.io.textio import WriteToText
 from apache_beam.options.pipeline_options import PipelineOptions
 
-from typing import Any, Dict, Generator, Tuple
+from typing import Any, Dict, Generator, List, Tuple
 
 
 class PackageUp(beam.DoFn):
