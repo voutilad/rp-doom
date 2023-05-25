@@ -14,6 +14,16 @@ from apache_beam.options.pipeline_options import PipelineOptions
 from typing import Any, Dict, Generator, List, Tuple
 
 
+class Unpackage(beam.DoFn):
+    def process(self, data: Tuple[bytes, bytes]) -> Generator[Tuple[str, Dict[str, Any]], Any, Any]:
+        try:
+            key = data[0].decode("utf8")
+            value = json.loads(data[1].decode("utf8"))
+            yield key, value
+        except Exception as e:
+            print(f"Oh crap! {e}")
+
+
 class PackageUp(beam.DoFn):
     def process(self, data: Tuple[str, List[Dict[str, Any]]]) -> \
         Generator[Tuple[str, str], None, None]:
@@ -56,7 +66,7 @@ def run(bootstrap_servers: str, topics: str, pipeline_options: PipelineOptions,
                 timestamp_policy="CreateTime",
                 key_deserializer="org.apache.kafka.common.serialization.StringDeserializer",
                 value_deserializer="org.apache.kafka.common.serialization.StringDeserializer")
-            | "Parse JSON" >> beam.MapTuple(lambda k,v: (k, json.loads(v)))
+            | "Parse JSON" >> beam.ParDo(Unpackage())
             | "Filter Player Events" >> beam.Filter(lambda x: x[1]["actor"]["type"] == "player")
             | "Window" >> beam.WindowInto(window.SlidingWindows(1, 0.25))
             | "Group by Player" >> beam.GroupByKey()
