@@ -63,9 +63,7 @@ def run(bootstrap_servers: str, topics: str, pipeline_options: PipelineOptions,
             | "Read from Redpanda" >> ReadFromRedpanda(
                 consumer_config=consumer_config,
                 topics=topics,
-                timestamp_policy="CreateTime",
-                key_deserializer="org.apache.kafka.common.serialization.StringDeserializer",
-                value_deserializer="org.apache.kafka.common.serialization.StringDeserializer")
+                timestamp_policy="CreateTime")
             | "Parse JSON" >> beam.ParDo(Unpackage())
             | "Filter Player Events" >> beam.Filter(lambda x: x[1]["actor"]["type"] == "player")
             | "Window" >> beam.WindowInto(window.SlidingWindows(1, 0.25))
@@ -73,9 +71,7 @@ def run(bootstrap_servers: str, topics: str, pipeline_options: PipelineOptions,
             | "Convert back to JSON" >> beam.ParDo(PackageUp())
             | "Write back to Redpanda" >> WriteToRedpanda(
                 producer_config=consumer_config,
-                topic="beam",
-                key_serializer="org.apache.kafka.common.serialization.StringSerializer",
-                value_serializer="org.apache.kafka.common.serialization.StringSerializer")
+                topic="beam")
         )
 
 
