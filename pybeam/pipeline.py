@@ -10,10 +10,8 @@ from apache_beam.io.kafka import (
 )
 from apache_beam.io.textio import WriteToText
 from apache_beam.options.pipeline_options import PipelineOptions
-from apache_beam.typehings.decorators import with_output_types
 
 from typing import *
-
 
 
 def run(bootstrap_servers: str, topics: str, pipeline_options: PipelineOptions,
