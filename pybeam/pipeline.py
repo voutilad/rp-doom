@@ -22,7 +22,7 @@ class Echo(beam.DoFn):
         yield row
 
 
-def run(bootstrap_servers: str, topic: str, pipeline_options: PipelineOptions,
+def run(bootstrap_servers: str, topic: str, options: PipelineOptions,
         use_tls: bool = False, username: str = "", password: str = "",
         sasl_mechanism: str = "PLAIN"):
 
@@ -45,7 +45,7 @@ def run(bootstrap_servers: str, topic: str, pipeline_options: PipelineOptions,
         consumer_config.update({ "security.protocol": "SASL_PLAINTEXT" })
 
     # Construct our Beam Pipeline
-    with beam.Pipeline(options=pipeline_options) as pipeline:
+    with beam.Pipeline(options=options) as pipeline:
         _ = (
             pipeline
             | "Read from Redpanda" >> ReadFromRedpanda(
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     )
     args, pipeline_args = parser.parse_known_args()
 
-    pipeline_options = PipelineOptions(pipeline_args, streaming=True)
+    pipeline_options = PipelineOptions(pipeline_args, save_main_session=True, streaming=True)
 
     logging.info(f"Starting job with args: {args}")
     logging.info(f"Beam options: {pipeline_options}")
