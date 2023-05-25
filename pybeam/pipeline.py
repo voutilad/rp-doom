@@ -3,6 +3,8 @@
 import json
 import logging
 
+from collections import namedtuple
+
 import apache_beam as beam
 from apache_beam import window
 from apache_beam.io.kafka import (
@@ -11,25 +13,36 @@ from apache_beam.io.kafka import (
 from apache_beam.io.textio import WriteToText
 from apache_beam.options.pipeline_options import PipelineOptions
 
-from typing import Any, Dict, Generator, List, Tuple
+from typing import Any, Dict, Generator, NamedTuple, List, Tuple, Union
+
+
+Event = Dict[str, Any]
+
+class RawKV(NamedTuple):
+    key: Union[None, bytes]
+    value: Union[None, bytes]
+
+class KV(NamedTuple):
+    key: str
+    value: Event
 
 
 class Unpackage(beam.DoFn):
-    def process(self, data: Tuple[bytes, bytes]) -> Generator[Tuple[str, Dict[str, Any]], Any, Any]:
+    def process(self, data: RawKV) -> Generator[KV, Any, Any]:
         try:
-            key = data[0].decode("utf8")
-            value = json.loads(data[1].decode("utf8"))
-            yield key, value
+            _data = tuple(data)
+            key = (data[0] or bytes()).decode("utf8")
+            value = json.loads((data[1] or bytes()).decode("utf8"))
+            yield KV(key, value)
         except Exception as e:
             print(f"Oh crap! {e}")
 
 
 class PackageUp(beam.DoFn):
-    def process(self, data: Tuple[str, List[Dict[str, Any]]]) -> \
-        Generator[Tuple[str, str], None, None]:
+    def process(self, data: Tuple[str, List[Event]]) -> Generator[RawKV, None, None]:
         try:
             key, value = data
-            yield key, json.dumps(value)
+            yield RawKV(key=key.encode("utf8"), value=json.dumps(value).encode("utf8"))
         except Exception as e:
             print(f"Oh crap: {e}")
 
