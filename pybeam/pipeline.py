@@ -11,11 +11,11 @@ from apache_beam.io.kafka import (
 from apache_beam.io.textio import WriteToText
 from apache_beam.options.pipeline_options import PipelineOptions
 
-from typing import Any, Generator, Map, Tuple
+from typing import Any, Dict, Generator, Tuple
 
 
 class PackageUp(beam.DoFn):
-    def process(self, data: Tuple[str, List[Map[str, Any]]]) -> \
+    def process(self, data: Tuple[str, List[Dict[str, Any]]]) -> \
         Generator[Tuple[str, str], None, None]:
         try:
             key, value = data
