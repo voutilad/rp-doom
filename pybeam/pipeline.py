@@ -17,10 +17,7 @@ from typing import Any, Dict, Generator, NamedTuple, List, Tuple, Union
 
 
 Event = Dict[str, Any]
-
-class RawKV(NamedTuple):
-    key: Union[None, bytes]
-    value: Union[None, bytes]
+RawKV = Tuple[Union[None, bytes], Union[None, bytes]]
 
 class KV(NamedTuple):
     key: str
@@ -42,7 +39,7 @@ class PackageUp(beam.DoFn):
     def process(self, data: Tuple[str, List[Event]]) -> Generator[RawKV, None, None]:
         try:
             key, value = data
-            yield RawKV(key=key.encode("utf8"), value=json.dumps(value).encode("utf8"))
+            yield (key.encode("utf8"), json.dumps(value).encode("utf8"))
         except Exception as e:
             print(f"Oh crap: {e}")
 
