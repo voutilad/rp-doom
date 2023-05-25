@@ -20,58 +20,37 @@ package com.redpanda.doom;
 
 import com.google.gson.Gson;
 import com.redpanda.doom.model.Event;
-import net.sourceforge.argparse4j.ArgumentParsers;
-import net.sourceforge.argparse4j.inf.ArgumentParser;
-import net.sourceforge.argparse4j.inf.ArgumentParserException;
-import net.sourceforge.argparse4j.inf.Namespace;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
-import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
-import org.apache.flink.connector.kafka.source.reader.deserializer.KafkaRecordDeserializationSchema;
-import org.apache.flink.runtime.state.hashmap.HashMapStateBackend;
-import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.datastream.DataStreamSink;
+import org.apache.flink.streaming.api.datastream.WindowedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.sink.DiscardingSink;
-import org.apache.flink.streaming.api.functions.windowing.WindowFunction;
 import org.apache.flink.streaming.api.windowing.assigners.SlidingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
-import org.apache.flink.util.Collector;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
-import org.apache.kafka.common.serialization.StringDeserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
-import java.util.stream.StreamSupport;
 
 /**
- * Skeleton for a Flink DataStream Job.
- *
- * <p>For a tutorial how to write a Flink application, check the
- * tutorials and examples on the <a href="https://flink.apache.org">Flink Website</a>.
- *
- * <p>To package your application into a JAR file for execution, run
- * 'mvn clean package' on the command line.
- *
- * <p>If you change the name of the main class (with the public static void main(String[] args))
- * method, change the respective entry in the POM.xml file (simply search for 'mainClass').
+ * DoomPipeline
  */
 public class DoomPipeline {
   final static int DEFAULT_WINDOW_WIDTH_MS = 1_000;
-  final static int DEFAULT_SLIDE_WIDTH_MS = 25;
+  final static int DEFAULT_SLIDE_WIDTH_MS = 50;
 
 
   public static Properties consumerConfig(Config config) {
@@ -142,29 +121,63 @@ public class DoomPipeline {
   }
 
   public static DataStream<?> buildPipeline(StreamExecutionEnvironment env, Config config) {
-    return env
-        .fromSource(
-            redpandaSource(config),
-            WatermarkStrategy.<String>forMonotonousTimestamps().withIdleness(Duration.ofSeconds(3)),
-            "Redpanda")
-        .map(new GsonDeserializer()).name("Deserialize JSON")
-        .keyBy(Event::getSession)
-        .window(SlidingEventTimeWindows.of(
-            Time.milliseconds(DEFAULT_WINDOW_WIDTH_MS),
-            Time.milliseconds(DEFAULT_SLIDE_WIDTH_MS)))
-        .apply(new WindowFunction<Event, Tuple2<String, Long>, String, TimeWindow>() { // XXX: you need to keep this type hint here!
-          private final Logger logger = LoggerFactory.getLogger("Counter");
+    WindowedStream<Event, String, TimeWindow> windowPerPlayer =
+        env
+            .fromSource(
+                redpandaSource(config),
+                WatermarkStrategy.<String>forMonotonousTimestamps().withIdleness(Duration.ofSeconds(3)),
+                "Redpanda")
+            // Deserialize our Strings into Events using Gson
+            .map(new GsonDeserializer()).name("Deserialize Event")
+            // Key and Window per Player (session)
+            .keyBy(Event::getSession)
+            .window(SlidingEventTimeWindows.of(
+                Time.milliseconds(DEFAULT_WINDOW_WIDTH_MS),
+                Time.milliseconds(DEFAULT_SLIDE_WIDTH_MS)));
+
+    // KPS
+    DataStream<Tuple2<String, Double>> kps = windowPerPlayer
+        .aggregate(
+            new AggregateFunction<Event, Tuple2<String, Integer>, Tuple2<String, Double>>() {
+              @Override
+              public Tuple2<String, Integer> createAccumulator() {
+                return Tuple2.of("", 0);
+              }
+
+              @Override
+              public Tuple2<String, Integer> add(Event value, Tuple2<String, Integer> accumulator) {
+                return Tuple2.of(
+                    accumulator.f0.isBlank() ? value.getSession() : accumulator.f0,
+                    value.getType().equalsIgnoreCase("killed") ? accumulator.f1 + 1 : accumulator.f1
+                );
+              }
+
+              @Override
+              public Tuple2<String, Double> getResult(Tuple2<String, Integer> accumulator) {
+                return Tuple2.of(accumulator.f0, (1000.0d * accumulator.f1) / DEFAULT_WINDOW_WIDTH_MS);
+              }
+
+              @Override
+              public Tuple2<String, Integer> merge(Tuple2<String, Integer> a, Tuple2<String, Integer> b) {
+                return Tuple2.of(
+                    a.f0.isBlank() ? b.f0 : a.f0,
+                    a.f1 + b.f1
+                );
+              }
+            })
+        .name("KPS");
+
+    return kps
+        .map(new MapFunction<Tuple2<String, Double>, Object>() {
+          private final Logger logger = LoggerFactory.getLogger(this.getClass().getName() + "::LogIt");
+
           @Override
-          public void apply(String s, TimeWindow window, Iterable<Event> events, Collector<Tuple2<String, Long>> out) throws Exception {
-            try {
-              final long cnt = StreamSupport.stream(events.spliterator(), false).count();
-              out.collect(Tuple2.of(s, cnt));
-              logger.info("(" + s + ", " + cnt + ")");
-            } catch (Exception e) {
-              logger.error("oh crap", e.getCause());
-            }
+          public Object map(Tuple2<String, Double> value) {
+            logger.info("KPS(player: " + value.f0 + ", kps: " + value.f1 + ")");
+            return value;
           }
-        }).name("Counter");
+        })
+        .name("LogIt");
   }
 
   public static void main(String[] args) throws Exception {

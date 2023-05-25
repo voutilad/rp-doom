@@ -11,7 +11,17 @@ from apache_beam.io.kafka import (
 from apache_beam.io.textio import WriteToText
 from apache_beam.options.pipeline_options import PipelineOptions
 
-from typing import *
+from typing import Any, Generator, Map, Tuple
+
+
+class PackageUp(beam.DoFn):
+    def process(self, data: Tuple[str, List[Map[str, Any]]]) -> \
+        Generator[Tuple[str, str], None, None]:
+        try:
+            key, value = data
+            yield key, json.dumps(value)
+        except Exception as e:
+            print(f"Oh crap: {e}")
 
 
 def run(bootstrap_servers: str, topics: str, pipeline_options: PipelineOptions,
@@ -50,7 +60,7 @@ def run(bootstrap_servers: str, topics: str, pipeline_options: PipelineOptions,
             | "Filter Player Events" >> beam.Filter(lambda x: x[1]["actor"]["type"] == "player")
             | "Window" >> beam.WindowInto(window.SlidingWindows(1, 0.25))
             | "Group by Player" >> beam.GroupByKey()
-            | "Convert back to JSON" >> beam.MapTuple(lambda k,v: json.dumps([k, v]))
+            | "Convert back to JSON" >> beam.ParDo(PackageUp())
             | "Write back to Redpanda" >> WriteToRedpanda(
                 producer_config=consumer_config,
                 topic="beam",

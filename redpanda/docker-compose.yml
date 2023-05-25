@@ -15,7 +15,6 @@ secrets:
 
 services:
   redpanda-0:
-    # entrypoint: /pre-entry.sh
     command:
       - redpanda
       - start
@@ -26,18 +25,14 @@ services:
       - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
       - --rpc-addr redpanda-0:33145
       - --advertise-rpc-addr redpanda-0:33145
-      - --smp 1
-      - --memory 1G
+      - --smp 4
+      - --memory 4G
       - --default-log-level=info
-    image: docker.redpanda.com/redpandadata/redpanda:v23.1.9
+    image: docker.redpanda.com/redpandadata/redpanda:v23.1.10
     container_name: redpanda-0
     volumes:
       - type: tmpfs
         target: /var/lib/redpanda/data
-      #- "./pre-entry.sh:/pre-entry.sh:ro"
-      - "./broker.crt:/tls/broker.crt:ro"
-      - "./ca.crt:/tls/ca.crt:ro"
-      - "./redpanda.yaml:/tmp/redpanda.yaml:ro"
     networks:
       - redpanda_network
     ports:
@@ -47,6 +42,33 @@ services:
       - 19644:9644
     secrets:
       - broker_key
+
+  flink-jobmanager:
+    command: jobmanager
+    image: flink:1.17
+    networks:
+      - redpanda_network
+    ports:
+      - 8081:8081
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+
+  flink-taskmanager-0:
+    command: taskmanager
+    image: flink:1.17
+    networks:
+      - redpanda_network
+    depends_on:
+      - flink-jobmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        taskmanager.memory.process.size: 4g
+        parallelism.default: 1
 
   console:
     container_name: redpanda-console

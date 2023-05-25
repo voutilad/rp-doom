@@ -157,9 +157,8 @@ public class DoomPipeline {
         .apply("Compute KPS per Player", MapElements
             .into(TypeDescriptors.kvs(TypeDescriptors.strings(), TypeDescriptors.doubles()))
             .via(kv -> {
-              long cnt = 0;
               assert kv != null && kv.getValue() != null;
-              cnt = StreamSupport.stream(kv.getValue().spliterator(), true)
+              final long cnt = StreamSupport.stream(kv.getValue().spliterator(), true)
                   .filter(ev -> ev.getType().equalsIgnoreCase("killed")).count();
               if (cnt == 0)
                 return KV.of(kv.getKey(), 0d);
