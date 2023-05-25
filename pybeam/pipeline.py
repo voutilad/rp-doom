@@ -6,6 +6,7 @@ import logging
 import apache_beam as beam
 from apache_beam.io.kafka import ReadFromKafka
 from apache_beam.io.textio import WriteToText
+from apache_beam.transforms.window import SlidingWindows
 from apache_beam.options.pipeline_options import PipelineOptions
 
 from typing import *
@@ -41,6 +42,9 @@ def run(bootstrap_servers: str, topics: str, pipeline_options: PipelineOptions,
                 topics=topics,
                 timestamp_policy="CreateTime")
             | "Parse JSON" >> beam.Map(json.loads)
+            | "Filter Player Events" >> beam.Filter(lambda x: x["actor"]["type"] == "player")
+            | "Window" >> beam.WindowInto(SlidingWindows(1, 0.25))
+            | "Group by Player" >> beam.GroupByKey()
             | "Write to File" >> WriteToText("beam-output", file_name_suffix="txt")
         )
 
