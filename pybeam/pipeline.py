@@ -54,8 +54,8 @@ def run(bootstrap_servers: str, topics: str, pipeline_options: PipelineOptions,
             | "Write back to Redpanda" >> WriteToRedpanda(
                 producer_config=consumer_config,
                 topic="beam",
-                key_serializer="org.apache.kafka.common.serialization.StringDeserializer",
-                value_serializer="org.apache.kafka.common.serialization.StringDeserializer")
+                key_serializer="org.apache.kafka.common.serialization.StringSerializer",
+                value_serializer="org.apache.kafka.common.serialization.StringSerializer")
         )
 
 
