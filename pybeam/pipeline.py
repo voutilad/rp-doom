@@ -15,7 +15,7 @@ def run(bootstrap_servers: str, topics: str, pipeline_options: PipelineOptions,
 
     # Prepare our Consumer Configuration.
     consumer_config = {
-        "bootstrap_servers": bootstrap_servers,
+        "bootstrap.servers": bootstrap_servers,
         "security.protocol": "PLAINTEXT",
     }
     if username:
@@ -30,19 +30,17 @@ def run(bootstrap_servers: str, topics: str, pipeline_options: PipelineOptions,
         consumer_config.update({ "security.protocol": "SSL" })
     elif username:
         consumer_config.update({ "security.protocol": "SASL_PLAINTEXT" })
-    else:
-        raise RuntimeException("unexpected tls & sasl condition!")
 
     # Construct our Beam Pipeline
     with beam.Pipeline(options=pipeline_options) as pipeline:
         _ = (
             pipeline
-            | "Read from Redpanda" > beam.io.ReadFromKafka(
+            | "Read from Redpanda" >> ReadFromKafka(
                 consumer_config=consumer_config,
                 topics=topics,
                 timestamp_policy="CreateTime")
-            | "Parse JSON" > beam.Map(json.loads)
-            | "Just Print" > beam.Map(logging.info)
+            | "Parse JSON" >> beam.Map(json.loads)
+            | "Just Print" >> beam.Map(logging.info)
         )
 
 
@@ -59,12 +57,9 @@ if __name__ == "__main__":
         dest="bootstrap_servers",
         default=os.environ.get("REDPANDA_BROKERS", "localhost:9092"),
     )
-    parser.add_argument(
-        "--user",
-    )
-    parser.add_argument(
-        "--password",
-    )
+    parser.add_argument("--topics", default="doom")
+    parser.add_argument("--user", dest="username")
+    parser.add_argument("--password")
     parser.add_argument(
         "--sasl-mechanism",
         dest="sasl_mechanism",
@@ -76,8 +71,12 @@ if __name__ == "__main__":
         default=False,
         action=argparse.BooleanOptionalAction,
     )
-    known_args, pipeline_args = parser.parse_known_args()
+    args, pipeline_args = parser.parse_known_args()
 
     pipeline_options = PipelineOptions(pipeline_args, streaming=True)
 
-    print(f"xxx known_args = {known_args}")
+    logging.info(f"Starting job with args: {args}")
+    logging.info(f"Beam options: {pipeline_options}")
+
+    run(args.bootstrap_servers, args.topics, pipeline_options, args.use_tls,
+        args.username, args.password, args.sasl_mechanism)
