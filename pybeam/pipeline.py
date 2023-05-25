@@ -47,6 +47,7 @@ def run(bootstrap_servers: str, topics: str, pipeline_options: PipelineOptions,
             | "Filter Player Events" >> beam.Filter(lambda x: x["actor"]["type"] == "player")
             | "Window" >> beam.WindowInto(window.SlidingWindows(1, 0.25))
             | "Group by Player" >> beam.GroupByKey()
+            | "Convert back to JSON" >> beam.MapTuple(lambda k,v: json.dumps([k, v]))
             | "Write back to Redpanda" >> WriteToRedpanda(
                 producer_config=consumer_config,
                 topic="beam")
