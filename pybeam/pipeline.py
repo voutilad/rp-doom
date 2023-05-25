@@ -5,6 +5,7 @@ import logging
 
 import apache_beam as beam
 from apache_beam.io.kafka import ReadFromKafka
+from apache_beam.io.textio import WriteToText
 from apache_beam.options.pipeline_options import PipelineOptions
 
 from typing import *
@@ -40,7 +41,7 @@ def run(bootstrap_servers: str, topics: str, pipeline_options: PipelineOptions,
                 topics=topics,
                 timestamp_policy="CreateTime")
             | "Parse JSON" >> beam.Map(json.loads)
-            | "Just Print" >> beam.Map(logging.info)
+            | "Write to File" >> WriteToText("beam-output", file_name_suffix="txt")
         )
 
 
