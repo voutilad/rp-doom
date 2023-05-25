@@ -13,11 +13,13 @@ from apache_beam.io.kafka import (
 from apache_beam.io.textio import WriteToText
 from apache_beam.options.pipeline_options import PipelineOptions
 
-from typing import Any, Dict, Generator, NamedTuple, List, Tuple, TypeVar, Union
+from typing import (
+    Any, Dict, Generator, Iterable, List, Optional, Tuple, TypeVar
+)
 
 
 Event = Dict[str, Any]
-RawKV = Tuple[Union[None, bytes], Union[None, bytes]]
+RawKV = Tuple[Optional[bytes], Optional[bytes]]
 K = TypeVar("K")
 V = TypeVar("V")
 KV = Tuple[K, V]
@@ -35,10 +37,10 @@ class Unpackage(beam.DoFn):
 
 
 class PackageUp(beam.DoFn):
-    def process(self, data: Tuple[str, List[Event]]) -> Generator[RawKV, None, None]:
+    def process(self, data: Tuple[str, Iterable[Any]]) -> Generator[RawKV, None, None]:
         try:
             key, value = data
-            yield (key.encode("utf8"), json.dumps(value).encode("utf8"))
+            yield (key.encode("utf8"), json.dumps(list(value)).encode("utf8"))
         except Exception as e:
             print(f"Oh crap: {e}")
 
