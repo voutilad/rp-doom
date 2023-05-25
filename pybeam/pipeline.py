@@ -13,39 +13,10 @@ from apache_beam.io.kafka import (
 from apache_beam.io.textio import WriteToText
 from apache_beam.options.pipeline_options import PipelineOptions
 
-from typing import (
-    Any, Dict, Generator, Iterable, List, Optional, Tuple, TypeVar
-)
+from typing import Any, Dict, Tuple
 
 
-Event = Dict[str, Any]
-RawKV = Tuple[Optional[bytes], Optional[bytes]]
-K = TypeVar("K")
-V = TypeVar("V")
-KV = Tuple[K, V]
-
-
-class Unpackage(beam.DoFn):
-    def process(self, data: RawKV) -> Generator[KV, Any, Any]:
-        try:
-            _data = tuple(data)
-            key = (data[0] or bytes()).decode("utf8")
-            value = json.loads((data[1] or bytes()).decode("utf8"))
-            yield key, value
-        except Exception as e:
-            print(f"Oh crap! {e}")
-
-
-class PackageUp(beam.DoFn):
-    def process(self, data: Tuple[str, Iterable[Any]]) -> Generator[RawKV, None, None]:
-        try:
-            key, value = data
-            yield (key.encode("utf8"), json.dumps(list(value)).encode("utf8"))
-        except Exception as e:
-            print(f"Oh crap: {e}")
-
-
-def run(bootstrap_servers: str, topics: str, pipeline_options: PipelineOptions,
+def run(bootstrap_servers: str, topic: str, pipeline_options: PipelineOptions,
         use_tls: bool = False, username: str = "", password: str = "",
         sasl_mechanism: str = "PLAIN"):
 
@@ -73,13 +44,17 @@ def run(bootstrap_servers: str, topics: str, pipeline_options: PipelineOptions,
             pipeline
             | "Read from Redpanda" >> ReadFromRedpanda(
                 consumer_config=consumer_config,
-                topics=[topics],
+                topics=[topic],
                 timestamp_policy="CreateTime")
-            | "Parse JSON" >> beam.ParDo(Unpackage())
-            | "Filter Player Events" >> beam.Filter(lambda x: x[1]["actor"]["type"] == "player")
+            | "Parse" >> beam.MapTuple(
+                lambda k,v: (k.decode("utf8"), json.loads(v.decode("utf8")))
+            ).with_output_types(Tuple[str, Dict[str, Any]])
+            #| "Filter Player Events" >> beam.Filter(lambda x: x[1]["actor"]["type"] == "player")
             | "Window" >> beam.WindowInto(window.SlidingWindows(1, 0.25))
             | "Group by Player" >> beam.GroupByKey()
-            | "Convert back to JSON" >> beam.ParDo(PackageUp())
+            | "Serialize" >> beam.MapTuple(
+                lambda k,v: (json.dumps(k).encode("utf8"), json.dumps(v).encode("utf8"))
+            ).with_output_types(Tuple[bytes, bytes])
             | "Write back to Redpanda" >> WriteToRedpanda(
                 producer_config=consumer_config,
                 topic="beam")
@@ -99,7 +74,7 @@ if __name__ == "__main__":
         dest="bootstrap_servers",
         default=os.environ.get("REDPANDA_BROKERS", "localhost:9092"),
     )
-    parser.add_argument("--topics", default="doom")
+    parser.add_argument("--topic", default="doom")
     parser.add_argument("--user", dest="username")
     parser.add_argument("--password")
     parser.add_argument(
@@ -120,5 +95,5 @@ if __name__ == "__main__":
     logging.info(f"Starting job with args: {args}")
     logging.info(f"Beam options: {pipeline_options}")
 
-    run(args.bootstrap_servers, args.topics, pipeline_options, args.use_tls,
+    run(args.bootstrap_servers, args.topic, pipeline_options, args.use_tls,
         args.username, args.password, args.sasl_mechanism)
