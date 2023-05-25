@@ -13,15 +13,14 @@ from apache_beam.io.kafka import (
 from apache_beam.io.textio import WriteToText
 from apache_beam.options.pipeline_options import PipelineOptions
 
-from typing import Any, Dict, Generator, NamedTuple, List, Tuple, Union
+from typing import Any, Dict, Generator, NamedTuple, List, Tuple, TypeVar, Union
 
 
 Event = Dict[str, Any]
 RawKV = Tuple[Union[None, bytes], Union[None, bytes]]
-
-class KV(NamedTuple):
-    key: str
-    value: Event
+K = TypeVar("K")
+V = TypeVar("V")
+KV = Tuple[K, V]
 
 
 class Unpackage(beam.DoFn):
@@ -30,7 +29,7 @@ class Unpackage(beam.DoFn):
             _data = tuple(data)
             key = (data[0] or bytes()).decode("utf8")
             value = json.loads((data[1] or bytes()).decode("utf8"))
-            yield KV(key, value)
+            yield key, value
         except Exception as e:
             print(f"Oh crap! {e}")
 
