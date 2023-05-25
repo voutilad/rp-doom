@@ -10,8 +10,11 @@ from apache_beam.io.kafka import (
 )
 from apache_beam.io.textio import WriteToText
 from apache_beam.options.pipeline_options import PipelineOptions
+from apache_beam.typehings.decorators import with_output_types
 
 from typing import *
+
+
 
 def run(bootstrap_servers: str, topics: str, pipeline_options: PipelineOptions,
         use_tls: bool = False, username: str = "", password: str = "",
@@ -42,15 +45,19 @@ def run(bootstrap_servers: str, topics: str, pipeline_options: PipelineOptions,
             | "Read from Redpanda" >> ReadFromRedpanda(
                 consumer_config=consumer_config,
                 topics=topics,
-                timestamp_policy="CreateTime")
-            | "Parse JSON" >> beam.Map(json.loads)
-            | "Filter Player Events" >> beam.Filter(lambda x: x["actor"]["type"] == "player")
+                timestamp_policy="CreateTime",
+                key_deserializer="org.apache.kafka.common.serialization.StringDeserializer",
+                value_deserializer="org.apache.kafka.common.serialization.StringDeserializer")
+            | "Parse JSON" >> beam.MapTuple(lambda k,v: (k, json.loads(v)))
+            | "Filter Player Events" >> beam.Filter(lambda x: x[1]["actor"]["type"] == "player")
             | "Window" >> beam.WindowInto(window.SlidingWindows(1, 0.25))
             | "Group by Player" >> beam.GroupByKey()
             | "Convert back to JSON" >> beam.MapTuple(lambda k,v: json.dumps([k, v]))
             | "Write back to Redpanda" >> WriteToRedpanda(
                 producer_config=consumer_config,
-                topic="beam")
+                topic="beam",
+                key_serializer="org.apache.kafka.common.serialization.StringDeserializer",
+                value_serializer="org.apache.kafka.common.serialization.StringDeserializer")
         )
 
 
