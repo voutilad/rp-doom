@@ -13,7 +13,13 @@ from apache_beam.io.kafka import (
 from apache_beam.io.textio import WriteToText
 from apache_beam.options.pipeline_options import PipelineOptions
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Generator, Tuple
+
+
+class Echo(beam.DoFn):
+    def process(self, row: Any) -> Generator[Any, None, None]:
+        print(f"row: {row}")
+        yield row
 
 
 def run(bootstrap_servers: str, topic: str, pipeline_options: PipelineOptions,
@@ -49,9 +55,10 @@ def run(bootstrap_servers: str, topic: str, pipeline_options: PipelineOptions,
             | "Parse" >> beam.MapTuple(
                 lambda k,v: (k.decode("utf8"), json.loads(v.decode("utf8")))
             ).with_output_types(Tuple[str, Dict[str, Any]])
-            #| "Filter Player Events" >> beam.Filter(lambda x: x[1]["actor"]["type"] == "player")
+            | "Filter Player Events" >> beam.Filter(lambda x: x[1]["actor"]["type"] == "player")
             | "Window" >> beam.WindowInto(window.SlidingWindows(1, 0.25))
             | "Group by Player" >> beam.GroupByKey()
+            | "Echo" >> beam.ParDo(Echo())
             | "Serialize" >> beam.MapTuple(
                 lambda k,v: (json.dumps(k).encode("utf8"), json.dumps(v).encode("utf8"))
             ).with_output_types(Tuple[bytes, bytes])
