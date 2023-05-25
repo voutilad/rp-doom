@@ -73,7 +73,7 @@ def run(bootstrap_servers: str, topics: str, pipeline_options: PipelineOptions,
             pipeline
             | "Read from Redpanda" >> ReadFromRedpanda(
                 consumer_config=consumer_config,
-                topics=topics,
+                topics=[topics],
                 timestamp_policy="CreateTime")
             | "Parse JSON" >> beam.ParDo(Unpackage())
             | "Filter Player Events" >> beam.Filter(lambda x: x[1]["actor"]["type"] == "player")
