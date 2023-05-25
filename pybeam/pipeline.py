@@ -4,9 +4,11 @@ import json
 import logging
 
 import apache_beam as beam
-from apache_beam.io.kafka import ReadFromKafka
+from apache_beam import window
+from apache_beam.io.kafka import (
+    ReadFromKafka as ReadFromRedpanda, WriteToKafka as WriteToRedpanda
+)
 from apache_beam.io.textio import WriteToText
-from apache_beam.transforms.window import SlidingWindows
 from apache_beam.options.pipeline_options import PipelineOptions
 
 from typing import *
@@ -37,15 +39,17 @@ def run(bootstrap_servers: str, topics: str, pipeline_options: PipelineOptions,
     with beam.Pipeline(options=pipeline_options) as pipeline:
         _ = (
             pipeline
-            | "Read from Redpanda" >> ReadFromKafka(
+            | "Read from Redpanda" >> ReadFromRedpanda(
                 consumer_config=consumer_config,
                 topics=topics,
                 timestamp_policy="CreateTime")
             | "Parse JSON" >> beam.Map(json.loads)
             | "Filter Player Events" >> beam.Filter(lambda x: x["actor"]["type"] == "player")
-            | "Window" >> beam.WindowInto(SlidingWindows(1, 0.25))
+            | "Window" >> beam.WindowInto(window.SlidingWindows(1, 0.25))
             | "Group by Player" >> beam.GroupByKey()
-            | "Write to File" >> WriteToText("beam-output", file_name_suffix="txt")
+            | "Write back to Redpanda" >> WriteToRedpanda(
+                producer_config=consumer_config,
+                topic="beam")
         )
 
 
