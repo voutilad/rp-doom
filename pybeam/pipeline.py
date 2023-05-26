@@ -6,12 +6,13 @@ import logging
 from collections import namedtuple
 
 import apache_beam as beam
-from apache_beam import window, trigger
+from apache_beam.transforms import window
 from apache_beam.io.kafka import (
     ReadFromKafka as ReadFromRedpanda, WriteToKafka as WriteToRedpanda
 )
-from apache_beam.options.pipeline_options import PipelineOptions
-
+from apache_beam.options.pipeline_options import (
+    PipelineOptions, StandardOptions
+)
 from typing import Any, Dict, Generator, Tuple
 
 
@@ -65,9 +66,7 @@ def run(bootstrap_servers: str, topic: str, options: PipelineOptions,
                 lambda k,v: (k.decode("utf8"), json.loads(v.decode("utf8")))
             ).with_output_types(Tuple[str, Dict[str, Any]])
             | "Filter Player Events" >> beam.Filter(lambda x: x[1]["actor"]["type"] == "player")
-            | "Window" >> beam.WindowInto(window.SlidingWindows(1, 0.25),
-                                          trigger=trigger.Repeatedly(trigger.AfterProcessingTime()),
-                                          accumulation_mode=trigger.AccumulationMode.ACCUMULATING)
+            | "Window" >> beam.WindowInto(window.SlidingWindows(1, 0.25))
             | "Group by Player" >> beam.GroupByKey()
         )
 
@@ -109,7 +108,8 @@ if __name__ == "__main__":
     )
     args, pipeline_args = parser.parse_known_args()
 
-    pipeline_options = PipelineOptions(pipeline_args, save_main_session=True, streaming=True)
+    pipeline_options = PipelineOptions(pipeline_args)
+    pipeline_options.view_as(StandardOptions).streaming = True
 
     logging.info(f"Starting job with args: {args}")
     logging.info(f"Beam options: {pipeline_options}")
