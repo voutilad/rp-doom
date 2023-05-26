@@ -66,7 +66,8 @@ def run(bootstrap_servers: str, topic: str, options: PipelineOptions,
             ).with_output_types(Tuple[str, Dict[str, Any]])
             | "Filter Player Events" >> beam.Filter(lambda x: x[1]["actor"]["type"] == "player")
             | "Window" >> beam.WindowInto(window.SlidingWindows(1, 0.25),
-                                          trigger=trigger.Repeatedly(trigger.AfterProcessingTime()))
+                                          trigger=trigger.Repeatedly(trigger.AfterProcessingTime()),
+                                          accumulation_mode=trigger.AccumulationMode.ACCUMULATING)
             | "Group by Player" >> beam.GroupByKey()
         )
 
