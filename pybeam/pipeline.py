@@ -26,7 +26,7 @@ def build_jaas_config(mechanism: str, username: str, password: str):
     base = "org.apache.kafka.common.security"
     if mechanism.startswith("SCRAM"):
         return f"{base}.scram.ScramLoginModule required " \
-            + '"username="{username}" password="{password}";'
+            + f'username="{username}" password="{password}";'
     return f"{base}.plain.PlainLoginModule required" \
         + f'username="{username}" password="{password}";'
 
