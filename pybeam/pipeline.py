@@ -22,6 +22,15 @@ class Echo(beam.DoFn):
         yield row
 
 
+def build_jaas_config(mechanism: str, username: str, password: str):
+    base = "org.apache.kafka.common.security"
+    if mechanism.startswith("SCRAM"):
+        return f"{base}.scram.ScramLoginModule required " \
+            + '"username="{username}" password="{password}";'
+    return f"{base}.plain.PlainLoginModule required" \
+        + f'username="{username}" password="{password}";'
+
+
 def run(bootstrap_servers: str, topic: str, options: PipelineOptions,
         use_tls: bool = False, username: str = "", password: str = "",
         sasl_mechanism: str = "PLAIN"):
@@ -33,9 +42,10 @@ def run(bootstrap_servers: str, topic: str, options: PipelineOptions,
     }
     if username:
         consumer_config.update({
-            "sasl.username": username,
-            "sasl.password": password,
             "sasl.mechanism": sasl_mechanism,
+            "sasl.jaas.config": build_jaas_config(
+                sasl_mechanism, username, password
+            ),
         })
     if use_tls and username:
         consumer_config.update({ "security.protocol": "SASL_SSL" })
