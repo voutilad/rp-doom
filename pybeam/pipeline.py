@@ -6,11 +6,10 @@ import logging
 from collections import namedtuple
 
 import apache_beam as beam
-from apache_beam import window
+from apache_beam import window, trigger
 from apache_beam.io.kafka import (
     ReadFromKafka as ReadFromRedpanda, WriteToKafka as WriteToRedpanda
 )
-from apache_beam.io.textio import WriteToText
 from apache_beam.options.pipeline_options import PipelineOptions
 
 from typing import Any, Dict, Generator, Tuple
@@ -56,7 +55,7 @@ def run(bootstrap_servers: str, topic: str, options: PipelineOptions,
 
     # Construct our Beam Pipeline
     with beam.Pipeline(options=options) as pipeline:
-        _ = (
+        per_player = (
             pipeline
             | "Read from Redpanda" >> ReadFromRedpanda(
                 consumer_config=consumer_config,
@@ -66,15 +65,17 @@ def run(bootstrap_servers: str, topic: str, options: PipelineOptions,
                 lambda k,v: (k.decode("utf8"), json.loads(v.decode("utf8")))
             ).with_output_types(Tuple[str, Dict[str, Any]])
             | "Filter Player Events" >> beam.Filter(lambda x: x[1]["actor"]["type"] == "player")
-            | "Window" >> beam.WindowInto(window.SlidingWindows(1, 0.25))
+            | "Window" >> beam.WindowInto(window.SlidingWindows(1, 0.25),
+                                          trigger=trigger.Repeatedly(window.AfterProcessingTime()))
             | "Group by Player" >> beam.GroupByKey()
-            | "Echo" >> beam.ParDo(Echo())
+        )
+
+        _ = (
+            per_player
             | "Serialize" >> beam.MapTuple(
                 lambda k,v: (json.dumps(k).encode("utf8"), json.dumps(v).encode("utf8"))
             ).with_output_types(Tuple[bytes, bytes])
-            | "Write back to Redpanda" >> WriteToRedpanda(
-                producer_config=consumer_config,
-                topic="beam")
+            | "Output" >> beam.io.textio.WriteToText("/tmp/beam-*.txt")
         )
 
 
