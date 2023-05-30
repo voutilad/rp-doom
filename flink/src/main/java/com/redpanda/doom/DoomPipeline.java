@@ -18,12 +18,13 @@
 
 package com.redpanda.doom;
 
-import com.google.gson.Gson;
+import com.redpanda.doom.fn.EchoFn;
+import com.redpanda.doom.fn.EventRateAggregator;
+import com.redpanda.doom.fn.GsonDeserializer;
 import com.redpanda.doom.model.Event;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
@@ -104,22 +105,6 @@ public class DoomPipeline {
         .build();
   }
 
-  private static class GsonDeserializer extends RichMapFunction<String, Event> {
-
-    private transient Gson gson = null;
-
-    @Override
-    public void open(Configuration parameters) throws Exception {
-      super.open(parameters);
-      gson = new Gson();
-    }
-
-    @Override
-    public Event map(String json) {
-      return gson.fromJson(json, Event.class);
-    }
-  }
-
   public static DataStream<?> buildPipeline(StreamExecutionEnvironment env, Config config) {
     WindowedStream<Event, String, TimeWindow> windowPerPlayer =
         env
@@ -137,46 +122,11 @@ public class DoomPipeline {
 
     // KPS
     DataStream<Tuple2<String, Double>> kps = windowPerPlayer
-        .aggregate(
-            new AggregateFunction<Event, Tuple2<String, Integer>, Tuple2<String, Double>>() {
-              @Override
-              public Tuple2<String, Integer> createAccumulator() {
-                return Tuple2.of("", 0);
-              }
-
-              @Override
-              public Tuple2<String, Integer> add(Event value, Tuple2<String, Integer> accumulator) {
-                return Tuple2.of(
-                    accumulator.f0.isBlank() ? value.getSession() : accumulator.f0,
-                    value.getType().equalsIgnoreCase("killed") ? accumulator.f1 + 1 : accumulator.f1
-                );
-              }
-
-              @Override
-              public Tuple2<String, Double> getResult(Tuple2<String, Integer> accumulator) {
-                return Tuple2.of(accumulator.f0, (1000.0d * accumulator.f1) / DEFAULT_WINDOW_WIDTH_MS);
-              }
-
-              @Override
-              public Tuple2<String, Integer> merge(Tuple2<String, Integer> a, Tuple2<String, Integer> b) {
-                return Tuple2.of(
-                    a.f0.isBlank() ? b.f0 : a.f0,
-                    a.f1 + b.f1
-                );
-              }
-            })
+        .aggregate(new EventRateAggregator("killed", DEFAULT_WINDOW_WIDTH_MS))
         .name("KPS");
 
     return kps
-        .map(new MapFunction<Tuple2<String, Double>, Object>() {
-          private final Logger logger = LoggerFactory.getLogger(this.getClass().getName() + "::LogIt");
-
-          @Override
-          public Object map(Tuple2<String, Double> value) {
-            logger.info("KPS(player: " + value.f0 + ", kps: " + value.f1 + ")");
-            return value;
-          }
-        })
+        .map(new EchoFn<>())
         .name("LogIt");
   }
 
