@@ -105,7 +105,7 @@ public class DoomPipeline {
         .build();
   }
 
-  public static DataStream<?> buildPipeline(StreamExecutionEnvironment env, Config config) {
+  public static DataStream<?> calculateKPS(StreamExecutionEnvironment env, Config config) {
     WindowedStream<Event, String, TimeWindow> windowPerPlayer =
         env
             .fromSource(
@@ -121,13 +121,9 @@ public class DoomPipeline {
                 Time.milliseconds(DEFAULT_SLIDE_WIDTH_MS)));
 
     // KPS
-    DataStream<Tuple2<String, Double>> kps = windowPerPlayer
+    return windowPerPlayer
         .aggregate(new EventRateAggregator("killed", DEFAULT_WINDOW_WIDTH_MS))
         .name("KPS");
-
-    return kps
-        .map(new EchoFn<>())
-        .name("LogIt");
   }
 
   public static void main(String[] args) throws Exception {
@@ -138,8 +134,9 @@ public class DoomPipeline {
         Configuration.fromMap(
             Map.of(
                 "state.backend.type", "rocksdb")));
-    var pipeline = buildPipeline(env, config);
-    pipeline.addSink(new DiscardingSink<>()).name("Trashcan"); // For now, sink to the trash.
+    var kps = calculateKPS(env, config);
+    kps.addSink(new DiscardingSink<>()).name("Trashcan"); // For now, sink to the trash.
+    kps.map(new EchoFn<>()).name("LogIt");
 
     logger.info("Starting pipeline.");
     env.execute();
