@@ -8,9 +8,14 @@ import net.sourceforge.argparse4j.inf.Namespace;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 
+/**
+ * All the configuration knobs and dials for the Doom Pipeline.
+ */
 public class Config implements Map<String, Object> {
   public static final String KEY_BROKERS = "brokers";
   public static final String KEY_USER = "user";
@@ -21,6 +26,7 @@ public class Config implements Map<String, Object> {
   public static final String KEY_GROUP_ID = "groupId";
   public static final String KEY_CLIENT_ID_PREFIX = "clientIdPrefix";
   public static final String KEY_GROUP_INSTANCE_ID = "groupInstanceId";
+  public static final String KEY_SINK_TOPIC = "sinkTopic";
 
   private final Map<String, Object> map;
   private final Map<String, Object> defaults = Map.ofEntries(
@@ -32,12 +38,13 @@ public class Config implements Map<String, Object> {
       Map.entry(KEY_TOPICS, "doom"),
       Map.entry(KEY_GROUP_ID, "doom"),
       Map.entry(KEY_CLIENT_ID_PREFIX, "flinkyboi"),
-      Map.entry(KEY_GROUP_INSTANCE_ID, "flinkyboi")
+      Map.entry(KEY_GROUP_INSTANCE_ID, "flinkyboi"),
+      Map.entry(KEY_SINK_TOPIC, "")
   );
 
   public Config(final String[] args) {
     final ArgumentParser parser = ArgumentParsers
-        .newFor(DoomPipeline.class.getName())
+        .newFor(Pipeline.class.getName())
         .build()
         .defaultHelp(true)
         .description("A Flink pipeline!");
@@ -65,6 +72,10 @@ public class Config implements Map<String, Object> {
         .action(Arguments.storeTrue())
         .setDefault(false)
         .help("Use TLS?");
+    parser.addArgument("--sinkToTopic")
+        .dest(KEY_SINK_TOPIC)
+        .nargs("?")
+        .help("Optional topic to sink output.");
 
     Namespace ns = null;
     try {
@@ -82,7 +93,60 @@ public class Config implements Map<String, Object> {
   }
 
   private String withNamespace(String keyName) {
-    return DoomPipeline.class.getPackage().getName() + "." + keyName;
+    return Pipeline.class.getPackage().getName() + "." + keyName;
+  }
+
+  /**
+   * Generate a {@link Properties} form of the consumer configuration fit for passing to Flink's Kafka source.
+   * @return a new Properties instance based on this config instance.
+   */
+  public Properties toConsumerConfig() {
+    final Properties props = toBaseConfig();
+    props.setProperty("group.instance.id", this.getString(Config.KEY_GROUP_INSTANCE_ID));
+    return props;
+  }
+
+  public Properties toProducerConfig() {
+    return toBaseConfig();
+  }
+
+  /**
+   * Create the common Kafka config shared between both Consumers and Producers.
+   * @return new Properties
+   */
+  private Properties toBaseConfig() {
+    final Properties props = new Properties();
+
+    final boolean useTls = this.getBoolean(Config.KEY_TLS);
+    final String mechanism = this.getString(Config.KEY_SASL_MECHANISM);
+
+    if (mechanism.equalsIgnoreCase("plain")
+        || mechanism.equalsIgnoreCase("scram-sha-256")
+        || mechanism.equalsIgnoreCase("scram-sha-512")) {
+      // Be stylish and make sure we use all caps and yell our mechanism at the machine.
+      props.put("sasl.mechanism", mechanism.toUpperCase(Locale.ENGLISH));
+
+      // Assemble our jaasConfig string...it's a beast.
+      final String username = this.getString(Config.KEY_USER);
+      final String password = this.getString(Config.KEY_PASSWORD);
+      final String jaasConfig = ((mechanism.equalsIgnoreCase("plain"))
+          ? "org.apache.kafka.common.security.plain.PlainLoginModule required "
+          : "org.apache.kafka.common.security.scram.ScramLoginModule required ")
+          + "username=\"" + username + "\" password=\"" + password + "\";";
+      props.put("sasl.jaas.config", jaasConfig);
+
+      if (useTls)
+        props.put("security.protocol", "SASL_SSL");
+      else
+        props.put("security.protocol", "SASL_PLAINTEXT");
+    } else {
+      // No SASL Mechanism. Sad!
+      if (useTls)
+        props.put("security.protocol", "SSL");
+      else
+        props.put("security.protocol", "PLAINTEXT");
+    }
+    return props;
   }
 
   @Override

@@ -5,9 +5,14 @@ import com.redpanda.doom.model.Event;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.configuration.Configuration;
 
-public class GsonDeserializer extends RichMapFunction<String, Event> {
+public class GsonDeserializer<T> extends RichMapFunction<String, T> {
 
   private transient Gson gson = null;
+  private final Class<T> classOfT;
+
+  public GsonDeserializer(Class<T> classOfT) {
+    this.classOfT = classOfT;
+  }
 
   @Override
   public void open(Configuration parameters) throws Exception {
@@ -16,7 +21,7 @@ public class GsonDeserializer extends RichMapFunction<String, Event> {
   }
 
   @Override
-  public Event map(String json) {
-    return gson.fromJson(json, Event.class);
+  public T map(String json) {
+    return gson.fromJson(json, classOfT);
   }
 }

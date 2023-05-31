@@ -4,14 +4,23 @@ import com.redpanda.doom.model.Event;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.java.tuple.Tuple2;
 
+import java.util.concurrent.TimeUnit;
+
 public class EventRateAggregator implements AggregateFunction<Event, Tuple2<String, Integer>, Tuple2<String, Double>> {
 
   private final String eventType;
   private final int windowWidth;
 
-  public EventRateAggregator(String eventType, int windowWidthMillis) {
+  private final double scaleMillis;
+
+  public EventRateAggregator(String eventType, int windowWidthMillis, TimeUnit timeUnit) {
     this.eventType = eventType;
     this.windowWidth = windowWidthMillis;
+    this.scaleMillis = timeUnit.toMillis(1);
+  }
+
+  public EventRateAggregator(String eventType, int windowWidthMillis) {
+    this(eventType, windowWidthMillis, TimeUnit.SECONDS);
   }
 
   @Override
@@ -27,12 +36,13 @@ public class EventRateAggregator implements AggregateFunction<Event, Tuple2<Stri
           accumulator.f1 + 1
       );
     }
-    return accumulator;
+    return Tuple2.of(accumulator.f0.isBlank() ? value.getSession() : accumulator.f0, accumulator.f1);
   }
 
   @Override
   public Tuple2<String, Double> getResult(Tuple2<String, Integer> accumulator) {
-    return Tuple2.of(accumulator.f0, (1000.0d * accumulator.f1) / this.windowWidth);
+    // Scale to seconds.
+    return Tuple2.of(accumulator.f0, (scaleMillis * accumulator.f1) / this.windowWidth);
   }
 
   @Override

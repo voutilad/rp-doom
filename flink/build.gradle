@@ -7,7 +7,7 @@ plugins {
 
 ext {
     javaVersion = '11'
-    flinkVersion = '1.17.0'
+    flinkVersion = '1.17.1'
     gsonVersion = '2.10.1'
     slf4jVersion = '1.7.36'
     log4jVersion = '2.17.1'
@@ -16,7 +16,7 @@ ext {
 // artifact properties
 group = 'com.redpanda.doom'
 version = '0.2-SNAPSHOT'
-mainClassName = 'com.redpanda.doom.DoomPipeline'
+mainClassName = 'com.redpanda.doom.Pipeline'
 
 description = """A Flink pipeline for real-time Doom analytics."""
 
@@ -76,6 +76,7 @@ dependencies {
     runtimeOnly "org.apache.logging.log4j:log4j-core:${log4jVersion}"
 
     // Add test dependencies here.
+    testImplementation "org.apache.flink:flink-streaming-java:${flinkVersion}:tests"
     testImplementation(platform('org.junit:junit-bom:5.9.3'))
     testImplementation('org.junit.jupiter:junit-jupiter')
 }
