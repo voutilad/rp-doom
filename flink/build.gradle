@@ -18,7 +18,7 @@ group = 'com.redpanda.doom'
 version = '0.2-SNAPSHOT'
 mainClassName = 'com.redpanda.doom.DoomPipeline'
 
-description = """Flink Quickstart Job"""
+description = """A Flink pipeline for real-time Doom analytics."""
 
 sourceCompatibility = javaVersion
 targetCompatibility = javaVersion
