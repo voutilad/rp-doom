@@ -1,5 +1,6 @@
 package com.redpanda.doom;
 
+import com.redpanda.doom.model.Metric;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.configuration.Configuration;
@@ -14,6 +15,7 @@ import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
 
@@ -32,14 +34,17 @@ public class Job {
         .build();
   }
 
-  public static KafkaSink<String> redpandaSink(Config config) {
+  public static KafkaSink<Metric> redpandaSink(Config config) {
     return KafkaSink
-        .<String>builder() // XXX you need a type annotation here or Java gets sad :'(
+        .<Metric>builder() // XXX you need a type annotation here or Java gets sad :'(
         .setBootstrapServers(config.getString(Config.KEY_BROKERS))
-        .setRecordSerializer(KafkaRecordSerializationSchema.builder()
-            .setTopic(config.getString(Config.KEY_SINK_TOPIC))
-            .setValueSerializationSchema(new SimpleStringSchema())
-            .build())
+        .setRecordSerializer(
+            KafkaRecordSerializationSchema.<Metric>builder()
+                .setTopic(config.getString(Config.KEY_SINK_TOPIC))
+                .setValueSerializationSchema(m -> m.toString().getBytes(StandardCharsets.UTF_8))
+                .setKeySerializationSchema(m -> m.getSession().getBytes(StandardCharsets.UTF_8))
+                .build()
+        )
         .setKafkaProducerConfig(config.toProducerConfig())
         .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
         .build();

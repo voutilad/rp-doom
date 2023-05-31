@@ -1,7 +1,6 @@
 package com.redpanda.doom.fn;
 
 import com.google.gson.Gson;
-import com.redpanda.doom.model.Event;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.configuration.Configuration;
 

@@ -22,12 +22,12 @@ import com.redpanda.doom.fn.EventRateAggregator;
 import com.redpanda.doom.fn.FilterActorType;
 import com.redpanda.doom.fn.GsonDeserializer;
 import com.redpanda.doom.model.Event;
+import com.redpanda.doom.model.Metric;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.connector.sink2.StatefulSink;
 import org.apache.flink.api.connector.source.Source;
-import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.WindowedStream;
@@ -51,18 +51,18 @@ public class Pipeline {
   final static Logger logger = LoggerFactory.getLogger(Pipeline.class);
   final static int DEFAULT_WINDOW_WIDTH_MS = 3_000;
   final static int DEFAULT_SLIDE_WIDTH_MS = 500;
-  public static final SinkFunction<String> DEFAULT_SINK = new DiscardingSink<>();
+  public static final SinkFunction<Metric> DEFAULT_SINK = new DiscardingSink<>();
 
   final Config config;
   final StreamExecutionEnvironment env;
   final Source<String, ?, ?> source;
   final WatermarkStrategy<String> watermarkStrategy;
-  final SinkFunction<String> sink;
-  final StatefulSink<String, ?> statefulSink;
+  final SinkFunction<Metric> sink;
+  final StatefulSink<Metric, ?> statefulSink;
 
   private Pipeline(Config config, StreamExecutionEnvironment env, Source<String, ?, ?> source,
-                   WatermarkStrategy<String> watermarkStrategy, SinkFunction<String> sink,
-                   StatefulSink<String, ?> statefulSink) {
+                   WatermarkStrategy<String> watermarkStrategy, SinkFunction<Metric> sink,
+                   StatefulSink<Metric, ?> statefulSink) {
     this.config = config;
     this.env = env;
     this.source = source;
@@ -78,8 +78,8 @@ public class Pipeline {
   public static class PipelineBuilder {
     private Config config = new Config(new String[]{});
     private StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-    private SinkFunction<String> sink = DEFAULT_SINK;
-    private StatefulSink<String, ?> statefulSink = null;
+    private SinkFunction<Metric> sink = DEFAULT_SINK;
+    private StatefulSink<Metric, ?> statefulSink = null;
     private Source<String, ?, ?> source = null;
     private WatermarkStrategy<String> watermarkStrategy = WatermarkStrategy.forMonotonousTimestamps();
 
@@ -100,12 +100,12 @@ public class Pipeline {
       return this;
     }
 
-    public PipelineBuilder toSink(SinkFunction<String> sink) {
+    public PipelineBuilder toSink(SinkFunction<Metric> sink) {
       this.sink = sink;
       return this;
     }
 
-    public PipelineBuilder toStatefulSink(StatefulSink<String, ?> sink) {
+    public PipelineBuilder toStatefulSink(StatefulSink<Metric, ?> sink) {
       this.statefulSink = sink;
       return this;
     }
@@ -141,36 +141,35 @@ public class Pipeline {
                 Time.milliseconds(DEFAULT_WINDOW_WIDTH_MS),
                 Time.milliseconds(DEFAULT_SLIDE_WIDTH_MS)));
 
-    // Calculate the Event per Second and add the event type to the data.
-    DataStream<Tuple3<String, String, Double>> eventsPerSecond =
+    // Generate our metrics.
+    var metrics =
         windowPerPlayer
             .aggregate(new EventRateAggregator(eventType, DEFAULT_WINDOW_WIDTH_MS))
             .name("Compute Raw Events per Second")
-            .map(value -> Tuple3.of(value.f0, eventType, value.f1))
-            .returns(Types.TUPLE(Types.STRING, Types.STRING, Types.DOUBLE))
-            .name("Annotate " + eventType + " per second");
+            .map(tuple -> new Metric(tuple.f0, eventType + " per second", tuple.f1))
+            .returns(Types.POJO(Metric.class))
+            .name("Convert to Metric");
 
-
-    DataStream<String> results = eventsPerSecond
-        .map(Tuple3::toString)
-        .returns(Types.STRING)
-        .name("Stringify");
 
     // If we have a stateless sink, like a logger, just wire it in.
     if (sink != null) {
-      results
-          .map(s -> {
-            System.out.println(s);
-            return s;
+      metrics
+          .map(value -> {
+            System.out.println(value);
+            return value;
           })
-          .returns(Types.STRING)
+          .returns(Types.POJO(Metric.class))
           .name("Logger")
           .addSink(sink);
     }
 
     // Do we have a stateful sink like Redpanda?
-    if (statefulSink != null)
-      results.sinkTo(statefulSink).name("Stateful Sink");
+    if (statefulSink != null) {
+      metrics
+          .keyBy(Metric::getSession)
+          .sinkTo(statefulSink)
+          .name("Stateful Sink");
+    }
 
     // Make it so.
     logger.info("Executing plan:\n" + env.getExecutionPlan());
@@ -208,6 +207,7 @@ public class Pipeline {
     } catch (Exception e) {
       logger.error("unknown exception");
       throw new RuntimeException(e);
-    }  }
+    }
+  }
 
 }
